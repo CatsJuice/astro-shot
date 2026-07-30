@@ -161,7 +161,7 @@ button {
 .glass-dismiss-layer {
   position: fixed;
   inset: 0;
-  z-index: 4;
+  z-index: 39;
   pointer-events: none;
 }
 
@@ -172,7 +172,7 @@ button {
 .liquid-menu-stage {
   position: fixed;
   inset: 0;
-  z-index: 6;
+  z-index: 40;
   pointer-events: none;
 }
 
@@ -1037,7 +1037,8 @@ button {
     0 0 18px rgba(255, 36, 36, 0.22);
 }
 
-.camera-shutter.recording .shutter-core {
+.camera-shutter.video.recording .shutter-core,
+.camera-shutter.long-exposure.recording .shutter-core {
   width: 29px;
   height: 29px;
   border-radius: 7px;
@@ -1154,6 +1155,8 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
 
 .camera-mode-trigger.ui-idle,
 .camera-mode-trigger.menu-open-hidden,
+.camera-controls.menu-open-hidden,
+.gallery-stack.menu-open-hidden,
 .camera-controls.ui-idle,
 .gallery-stack.ui-idle {
   opacity: 0;

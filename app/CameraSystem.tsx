@@ -1020,9 +1020,9 @@ export function CameraSystem({
       <div
         className={`camera-controls${active ? " active" : ""}${
           hideIdleUi ? " ui-idle" : ""
-        }`}
-        aria-hidden={!active}
-        inert={!active}
+        }${menuOpen ? " menu-open-hidden" : ""}`}
+        aria-hidden={!active || menuOpen}
+        inert={!active || menuOpen}
       >
         {isCapturing ? (
           <div className="capture-status" aria-live="polite">
@@ -1079,9 +1079,13 @@ export function CameraSystem({
 
       {captures.length > 0 ? (
         <button
-          className={`gallery-stack${hideIdleUi ? " ui-idle" : ""}`}
+          className={`gallery-stack${hideIdleUi ? " ui-idle" : ""}${
+            menuOpen ? " menu-open-hidden" : ""
+          }`}
           type="button"
           aria-label={copy.openGallery}
+          aria-hidden={menuOpen}
+          inert={menuOpen}
           onClick={openGallery}
         >
           {captures.slice(0, 3).map((capture, index) => (
