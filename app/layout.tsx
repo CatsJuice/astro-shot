@@ -18,29 +18,29 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "AstroShot · 真实星空与流星模拟器",
+  title: "AstroShot · Real Sky & Meteor Simulator",
   description:
-    "基于真实恒星星表的交互式地球夜空，包含闪烁、自转、普通流星与分级火流星。",
+    "An interactive night-sky simulator built from a real star catalog, with atmospheric twinkle, Earth rotation, meteors, and fireballs.",
   openGraph: {
-    title: "AstroShot · 真实星空与流星模拟器",
+    title: "AstroShot · Real Sky & Meteor Simulator",
     description:
-      "基于真实恒星星表的交互式地球夜空，包含闪烁、自转、普通流星与分级火流星。",
+      "An interactive night-sky simulator built from a real star catalog, with atmospheric twinkle, Earth rotation, meteors, and fireballs.",
     type: "website",
-    locale: "zh_CN",
+    locale: "en_US",
     images: [
       {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "夜空、银河与一颗绿色火流星",
+        alt: "The night sky, Milky Way, and a green fireball",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "AstroShot · 真实星空与流星模拟器",
+    title: "AstroShot · Real Sky & Meteor Simulator",
     description:
-      "基于真实恒星星表的交互式地球夜空，包含闪烁、自转、普通流星与分级火流星。",
+      "An interactive night-sky simulator built from a real star catalog, with atmospheric twinkle, Earth rotation, meteors, and fireballs.",
     images: ["/og.png"],
   },
   icons: {
@@ -75,7 +75,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

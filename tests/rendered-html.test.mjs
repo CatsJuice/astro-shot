@@ -13,29 +13,36 @@ test("static export renders the AstroShot shell and controls", async () => {
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002"
   ).replace(/\/$/, "");
 
-  assert.match(html, /<title>AstroShot · 真实星空与流星模拟器<\/title>/i);
+  assert.match(html, /<html lang="en">/i);
+  assert.match(html, /<title>AstroShot · Real Sky &amp; Meteor Simulator<\/title>/i);
   assert.match(html, new RegExp(`(?:href|src)="${basePath}/_next/static/`));
   assert.ok(html.includes(`content="${siteUrl}/og.png"`));
   if (basePath) {
     assert.ok(!html.includes(`${basePath}${basePath}/og.png`));
   }
-  assert.match(html, /aria-label="可拖拽旋转视角的真实星空模拟画布"/);
+  assert.match(html, /aria-label="Draggable real-sky simulation canvas"/);
   assert.match(html, /HYG v4\.1 · HIPPARCOS \/ YALE \/ GLIESE/);
-  assert.match(html, /aria-label="大气闪烁"/);
-  assert.match(html, /aria-label="速度基准"/);
-  assert.match(html, /aria-label="起燃时间"/);
-  assert.match(html, /aria-label="爆亮概率"/);
-  assert.match(html, /aria-label="爆亮位置"/);
-  assert.match(html, /aria-label="方向散布"/);
-  assert.match(html, /触发普通流星/);
-  assert.match(html, /触发弱火流星/);
-  assert.match(html, /触发强火流星/);
-  assert.match(html, /模拟高感光度传感器颗粒/);
-  assert.match(html, /aria-label="打开参数面板"/);
-  assert.match(html, /aria-label="进入相机模式"/);
-  assert.match(html, />长曝光</);
+  assert.match(html, /aria-label="Atmospheric twinkle"/);
+  assert.match(html, /aria-label="Base speed"/);
+  assert.match(html, /aria-label="Ordinary meteor and fireball ratio"/);
+  assert.match(html, /aria-valuetext="Ordinary 74%, Fireball 26%"/);
+  assert.match(html, /aria-label="Ignition time"/);
+  assert.match(html, /aria-label="Flare probability"/);
+  assert.match(html, /aria-label="Flare position"/);
+  assert.match(html, /aria-label="Direction spread"/);
+  assert.match(html, /Trigger ordinary meteor/);
+  assert.match(html, /Trigger weak fireball/);
+  assert.match(html, /Trigger strong fireball/);
+  assert.match(html, /Simulate high-ISO sensor grain/);
+  assert.match(html, /aria-label="Open settings"/);
+  assert.match(html, /aria-label="Enter camera mode"/);
+  assert.match(html, />Long exposure</);
   assert.match(html, /aria-expanded="false"/);
-  assert.match(html, /aria-label="切换为英文"/);
+  assert.match(html, /aria-label="Switch to Chinese"/);
+  assert.match(
+    html,
+    /href="https:\/\/github\.com\/CatsJuice\/astro-shot"[^>]*aria-label="View project on GitHub"/,
+  );
   assert.doesNotMatch(html, />LIVE</);
   assert.doesNotMatch(html, /夜航|NIGHTFALL|拖拽观察天穹| FPS/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
@@ -92,6 +99,9 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(source, /variant === "strong"/);
   assert.match(source, /settings\.directionSpread/);
   assert.match(source, /settings\.meteorSpeed/);
+  assert.match(source, /ordinaryMeteorRatio: 74/);
+  assert.match(source, /1 - settingsNow\.ordinaryMeteorRatio \/ 100/);
+  assert.doesNotMatch(source, /ordinaryWeight|fireballWeight/);
   assert.match(source, /const ordinaryEnergy =/);
   assert.match(source, /const ordinarySpeedScale =/);
   assert.match(source, /const ordinaryTrackLength =/);

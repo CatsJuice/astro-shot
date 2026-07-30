@@ -49,8 +49,7 @@ type Settings = {
   sensorNoise: number;
   meteorRate: number;
   meteorSpeed: number;
-  ordinaryWeight: number;
-  fireballWeight: number;
+  ordinaryMeteorRatio: number;
   fireballEnergy: number;
   ignitionTime: number;
   burstChance: number;
@@ -137,8 +136,7 @@ const DEFAULT_SETTINGS: Settings = {
   sensorNoise: 0.28,
   meteorRate: 7,
   meteorSpeed: 1,
-  ordinaryWeight: 74,
-  fireballWeight: 26,
+  ordinaryMeteorRatio: 74,
   fireballEnergy: 0.72,
   ignitionTime: 0.12,
   burstChance: 0.68,
@@ -1578,6 +1576,52 @@ function RangeControl({
   );
 }
 
+function MeteorRatioControl({
+  ordinaryLabel,
+  fireballLabel,
+  ordinaryRatio,
+  ariaLabel,
+  onChange,
+}: {
+  ordinaryLabel: string;
+  fireballLabel: string;
+  ordinaryRatio: number;
+  ariaLabel: string;
+  onChange: (value: number) => void;
+}) {
+  const roundedOrdinaryRatio = Math.round(ordinaryRatio);
+  const fireballRatio = 100 - roundedOrdinaryRatio;
+
+  return (
+    <label className="control meteor-ratio-control">
+      <span className="meteor-ratio-labels" aria-hidden="true">
+        <span>
+          {ordinaryLabel}
+          <span className="control-value">{roundedOrdinaryRatio}%</span>
+        </span>
+        <span>
+          {fireballLabel}
+          <span className="control-value">{fireballRatio}%</span>
+        </span>
+      </span>
+      <input
+        className="range meteor-ratio-range"
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={ordinaryRatio}
+        style={
+          { "--meteor-ratio": `${ordinaryRatio}%` } as CSSProperties
+        }
+        onChange={(event) => onChange(Number(event.target.value))}
+        aria-label={ariaLabel}
+        aria-valuetext={`${ordinaryLabel} ${roundedOrdinaryRatio}%, ${fireballLabel} ${fireballRatio}%`}
+      />
+    </label>
+  );
+}
+
 type Locale = "zh-CN" | "en";
 
 const UI_COPY = {
@@ -1589,6 +1633,7 @@ const UI_COPY = {
     panelAria: "星空模拟参数",
     title: "AstroShot",
     languageLabel: "切换为英文",
+    githubLabel: "在 GitHub 上查看项目",
     environment: "观测环境",
     rotation: "地球自转",
     latitude: "观测纬度",
@@ -1604,8 +1649,9 @@ const UI_COPY = {
     meteorSystem: "流星系统",
     meteorRate: "出现频率",
     meteorSpeed: "速度基准",
-    ordinaryWeight: "普通流星权重",
-    fireballWeight: "火流星权重",
+    ordinaryMeteor: "普通流星",
+    fireball: "火流星",
+    meteorRatio: "普通流星与火流星比例",
     fireballEnergy: "火流星能级",
     ignitionTime: "起燃时间",
     burstChance: "爆亮概率",
@@ -1630,6 +1676,7 @@ const UI_COPY = {
     panelAria: "Sky simulation settings",
     title: "AstroShot",
     languageLabel: "Switch to Chinese",
+    githubLabel: "View project on GitHub",
     environment: "Observation",
     rotation: "Earth rotation",
     latitude: "Observer latitude",
@@ -1645,8 +1692,9 @@ const UI_COPY = {
     meteorSystem: "Meteor System",
     meteorRate: "Appearance rate",
     meteorSpeed: "Base speed",
-    ordinaryWeight: "Ordinary meteor weight",
-    fireballWeight: "Fireball weight",
+    ordinaryMeteor: "Ordinary",
+    fireball: "Fireball",
+    meteorRatio: "Ordinary meteor and fireball ratio",
     fireballEnergy: "Fireball energy",
     ignitionTime: "Ignition time",
     burstChance: "Flare probability",
@@ -1692,26 +1740,38 @@ function SettingsPanel({
     window.dispatchEvent(new CustomEvent("sky:meteor", { detail: kind }));
   };
 
-  const totalWeight = settings.ordinaryWeight + settings.fireballWeight || 1;
-  const ordinaryPercent = Math.round((settings.ordinaryWeight / totalWeight) * 100);
-  const fireballPercent = 100 - ordinaryPercent;
-
   return (
     <aside className="control-panel" aria-label={copy.panelAria}>
       <div className="panel-heading">
         <div>
           <h2>{copy.title}</h2>
         </div>
-        <button
-          className="locale-toggle"
-          type="button"
-          aria-label={copy.languageLabel}
-          onClick={() => onLocaleChange(locale === "zh-CN" ? "en" : "zh-CN")}
-        >
-          <span className={locale === "zh-CN" ? "active" : ""}>中</span>
-          <span className="locale-divider">/</span>
-          <span className={locale === "en" ? "active" : ""}>EN</span>
-        </button>
+        <div className="panel-actions">
+          <button
+            className="locale-toggle"
+            type="button"
+            aria-label={copy.languageLabel}
+            onClick={() => onLocaleChange(locale === "zh-CN" ? "en" : "zh-CN")}
+          >
+            <span className={locale === "zh-CN" ? "active" : ""}>中</span>
+            <span className="locale-divider">/</span>
+            <span className={locale === "en" ? "active" : ""}>EN</span>
+          </button>
+          <a
+            className="github-link"
+            href="https://github.com/CatsJuice/astro-shot"
+            target="_blank"
+            rel="noreferrer"
+            aria-label={copy.githubLabel}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 .7a11.6 11.6 0 0 0-3.67 22.6c.58.1.79-.25.79-.56v-2.25c-3.24.7-3.92-1.38-3.92-1.38-.53-1.35-1.3-1.71-1.3-1.71-1.06-.73.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.4-1.27.74-1.56-2.59-.3-5.31-1.3-5.31-5.74 0-1.27.45-2.3 1.2-3.12-.12-.3-.52-1.48.11-3.08 0 0 .98-.31 3.19 1.19a11 11 0 0 1 5.8 0c2.21-1.5 3.18-1.19 3.18-1.19.64 1.6.24 2.78.12 3.08.75.82 1.2 1.85 1.2 3.12 0 4.46-2.73 5.44-5.32 5.73.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.6 11.6 0 0 0 12 .7Z"
+              />
+            </svg>
+          </a>
+        </div>
       </div>
 
       <details className="section">
@@ -1845,23 +1905,12 @@ function SettingsPanel({
           display={`${settings.meteorSpeed.toFixed(2)}×`}
           onChange={(value) => update("meteorSpeed", value)}
         />
-        <RangeControl
-          label={copy.ordinaryWeight}
-          value={settings.ordinaryWeight}
-          min={0}
-          max={100}
-          step={1}
-          display={`${ordinaryPercent}%`}
-          onChange={(value) => update("ordinaryWeight", value)}
-        />
-        <RangeControl
-          label={copy.fireballWeight}
-          value={settings.fireballWeight}
-          min={0}
-          max={100}
-          step={1}
-          display={`${fireballPercent}%`}
-          onChange={(value) => update("fireballWeight", value)}
+        <MeteorRatioControl
+          ordinaryLabel={copy.ordinaryMeteor}
+          fireballLabel={copy.fireball}
+          ordinaryRatio={settings.ordinaryMeteorRatio}
+          ariaLabel={copy.meteorRatio}
+          onChange={(value) => update("ordinaryMeteorRatio", value)}
         />
         <RangeControl
           label={copy.fireballEnergy}
@@ -1988,23 +2037,17 @@ export function SkySimulator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [captureLocked, setCaptureLocked] = useState(false);
-  const [locale, setLocale] = useState<Locale>("zh-CN");
+  const [locale, setLocale] = useState<Locale>("en");
   const [catalogCount, setCatalogCount] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
   const copy = UI_COPY[locale];
 
   useEffect(() => {
     const storedLocale = window.localStorage.getItem("sky-locale");
-    const preferredLocale =
-      storedLocale === "zh-CN" || storedLocale === "en"
-        ? storedLocale
-        : window.navigator.language.toLowerCase().startsWith("zh")
-          ? "zh-CN"
-          : "en";
-    if (preferredLocale === "zh-CN") {
+    if (storedLocale !== "zh-CN") {
       return;
     }
-    const localeTimer = window.setTimeout(() => setLocale(preferredLocale), 0);
+    const localeTimer = window.setTimeout(() => setLocale("zh-CN"), 0);
     return () => window.clearTimeout(localeTimer);
   }, []);
 
@@ -2494,9 +2537,7 @@ export function SkySimulator() {
 
     const updateMeteors = (delta: number, now: number, settingsNow: Settings) => {
       if (!settingsNow.paused && settingsNow.meteorRate > 0 && now >= nextMeteorTime) {
-        const total = settingsNow.ordinaryWeight + settingsNow.fireballWeight;
-        const chance =
-          total <= 0 ? 0 : settingsNow.fireballWeight / Math.max(1, total);
+        const chance = 1 - settingsNow.ordinaryMeteorRatio / 100;
         spawn(Math.random() < chance ? "fireball" : "ordinary", now);
         const meanInterval = 60 / settingsNow.meteorRate;
         nextMeteorTime = now + Math.max(0.12, -Math.log(Math.max(0.001, Math.random())) * meanInterval);
