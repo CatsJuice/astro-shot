@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { computeGlassScissorBounds } from "./liquid-glass-geometry.mjs";
 
 type LiquidGlassMenuProps = {
   sourceCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -89,6 +90,8 @@ const GLASS_TINT_ALPHA = 0.4;
 const GLASS_SHADOW_ALPHA = 0.14;
 const GLASS_SHADOW_OFFSET_Y = 18;
 const GLASS_SHADOW_BLUR = 46;
+const GLASS_DRAW_MARGIN =
+  GLASS_SHADOW_BLUR * 2.5 + Math.abs(GLASS_SHADOW_OFFSET_Y) + 2;
 const GLASS_SPECULAR_OPACITY = 0.7;
 const GLASS_DISPLACEMENT_BLUR = 20;
 
@@ -651,6 +654,9 @@ float luminance(vec3 color) {
 void main() {
   vec2 position = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
   float distance = scene_distance(position);
+  if (distance > u_glass_secondary.w * 2.5) {
+    discard;
+  }
   float surface_visibility = scene_visibility(position);
   if (surface_visibility <= 0.001) {
     discard;
@@ -664,9 +670,6 @@ void main() {
     -(shadow_distance * shadow_distance) /
       (2.0 * u_glass_secondary.w * u_glass_secondary.w)
   );
-  if (distance > u_glass_secondary.w * 2.5) {
-    discard;
-  }
 
   float fill_mask = 1.0 - smoothstep(0.0, 1.4, distance);
   if (fill_mask <= 0.001) {
@@ -938,6 +941,7 @@ export function LiquidGlassMenu({
     let frame = 0;
     let textureWidth = 0;
     let textureHeight = 0;
+    let wasDrawing = false;
     let lastPointerActivity = performance.now();
     let triggerVisibilityTarget = 1;
     let measuredContentHeight = MENU_MAX_HEIGHT;
@@ -956,6 +960,24 @@ export function LiquidGlassMenu({
       1,
       TRIGGER_VISIBILITY_TRANSITION,
     );
+    const menuScissorRectangle = {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+    };
+    const buttonScissorRectangle = {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+    };
+    const scissorRectangles: Array<{
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    } | null> = [null, null, null, null, null];
 
     const resolveCameraGlassElements = () => {
       cameraTriggerElement ??= document.querySelector<HTMLElement>(
@@ -973,14 +995,13 @@ export function LiquidGlassMenu({
 
     const setElementRectUniform = (
       location: WebGLUniformLocation | null,
-      element: HTMLElement | null,
+      rectangle: DOMRectReadOnly | null,
       deviceScale: number,
     ) => {
-      if (!element) {
+      if (!rectangle) {
         gl.uniform4f(location, -10_000, -10_000, 1, 1);
         return;
       }
-      const rectangle = element.getBoundingClientRect();
       gl.uniform4f(
         location,
         rectangle.left * deviceScale,
@@ -1218,6 +1239,37 @@ export function LiquidGlassMenu({
         channels.menuCenterX.current - channels.menuWidth.current / 2;
       const menuTop =
         channels.menuCenterY.current - channels.menuHeight.current / 2;
+      const deviceScale = Math.min(1.5, window.devicePixelRatio || 1);
+      const buttonSize = BUTTON_SIZE * channels.buttonScale.current;
+      const buttonLeft =
+        channels.buttonX.current + (BUTTON_SIZE - buttonSize) / 2;
+      const buttonTop =
+        channels.buttonY.current + (BUTTON_SIZE - buttonSize) / 2;
+      resolveCameraGlassElements();
+      const cameraTriggerRectangle =
+        cameraTriggerElement?.getBoundingClientRect() ?? null;
+      const cameraShutterRectangle =
+        cameraShutterElement?.getBoundingClientRect() ?? null;
+      const cameraModesRectangle =
+        cameraModesElement?.getBoundingClientRect() ?? null;
+      const cameraTriggerVisibility = cameraTriggerElement
+        ? Number.parseFloat(
+            window.getComputedStyle(cameraTriggerElement).opacity,
+          ) || 0
+        : 0;
+      const cameraControlsVisibility = cameraControlsElement
+        ? Number.parseFloat(
+            window.getComputedStyle(cameraControlsElement).opacity,
+          ) || 0
+        : 0;
+      const menuSurfaceVisibility =
+        triggerVisibility.current +
+        (1 - triggerVisibility.current) *
+          Math.min(1, Math.max(0, channels.menuBlend.current));
+      const shouldDraw =
+        menuSurfaceVisibility > 0.001 ||
+        cameraTriggerVisibility > 0.001 ||
+        cameraControlsVisibility > 0.001;
       const menuClip = menuClipRef.current;
       const menuContent = menuContentRef.current;
       const button = buttonRef.current;
@@ -1255,21 +1307,39 @@ export function LiquidGlassMenu({
       }
 
       const sourceCanvas = sourceCanvasRef.current;
-      const deviceScale = Math.min(1.5, window.devicePixelRatio || 1);
       const targetWidth = Math.max(1, Math.round(viewportWidth * deviceScale));
       const targetHeight = Math.max(1, Math.round(viewportHeight * deviceScale));
+      let resized = false;
       if (
         glassCanvas.width !== targetWidth ||
         glassCanvas.height !== targetHeight
       ) {
         glassCanvas.width = targetWidth;
         glassCanvas.height = targetHeight;
+        resized = true;
       }
       gl.viewport(0, 0, glassCanvas.width, glassCanvas.height);
+      if (
+        !shouldDraw ||
+        !sourceCanvas ||
+        sourceCanvas.width <= 0 ||
+        sourceCanvas.height <= 0
+      ) {
+        if (wasDrawing || resized) {
+          gl.disable(gl.SCISSOR_TEST);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        wasDrawing = false;
+        frame = window.requestAnimationFrame(render);
+        return;
+      }
+
+      gl.disable(gl.SCISSOR_TEST);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
-      if (sourceCanvas && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
+      if (sourceCanvas.width > 0 && sourceCanvas.height > 0) {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, texture);
         if (
@@ -1313,29 +1383,24 @@ export function LiquidGlassMenu({
         );
         gl.uniform4f(
           buttonRectLocation,
-          (channels.buttonX.current +
-            (BUTTON_SIZE - BUTTON_SIZE * channels.buttonScale.current) / 2) *
-            deviceScale,
-          (channels.buttonY.current +
-            (BUTTON_SIZE - BUTTON_SIZE * channels.buttonScale.current) / 2) *
-            deviceScale,
-          BUTTON_SIZE * channels.buttonScale.current * deviceScale,
-          BUTTON_SIZE * channels.buttonScale.current * deviceScale,
+          buttonLeft * deviceScale,
+          buttonTop * deviceScale,
+          buttonSize * deviceScale,
+          buttonSize * deviceScale,
         );
-        resolveCameraGlassElements();
         setElementRectUniform(
           cameraTriggerRectLocation,
-          cameraTriggerElement,
+          cameraTriggerRectangle,
           deviceScale,
         );
         setElementRectUniform(
           cameraShutterRectLocation,
-          cameraShutterElement,
+          cameraShutterRectangle,
           deviceScale,
         );
         setElementRectUniform(
           cameraModesRectLocation,
-          cameraModesElement,
+          cameraModesRectangle,
           deviceScale,
         );
         gl.uniform1f(
@@ -1374,21 +1439,54 @@ export function LiquidGlassMenu({
         );
         gl.uniform1f(
           cameraTriggerVisibilityLocation,
-          cameraTriggerElement
-            ? Number.parseFloat(
-                window.getComputedStyle(cameraTriggerElement).opacity,
-              ) || 0
-            : 0,
+          cameraTriggerVisibility,
         );
         gl.uniform1f(
           cameraControlsVisibilityLocation,
-          cameraControlsElement
-            ? Number.parseFloat(
-                window.getComputedStyle(cameraControlsElement).opacity,
-              ) || 0
-            : 0,
+          cameraControlsVisibility,
         );
+        menuScissorRectangle.left = menuLeft;
+        menuScissorRectangle.top = menuTop;
+        menuScissorRectangle.width = channels.menuWidth.current;
+        menuScissorRectangle.height = channels.menuHeight.current;
+        buttonScissorRectangle.left = buttonLeft;
+        buttonScissorRectangle.top = buttonTop;
+        buttonScissorRectangle.width = buttonSize;
+        buttonScissorRectangle.height = buttonSize;
+        scissorRectangles[0] =
+          menuSurfaceVisibility > 0.001 ? menuScissorRectangle : null;
+        scissorRectangles[1] =
+          menuSurfaceVisibility > 0.001 ? buttonScissorRectangle : null;
+        scissorRectangles[2] =
+          cameraTriggerVisibility > 0.001
+            ? cameraTriggerRectangle
+            : null;
+        scissorRectangles[3] =
+          cameraControlsVisibility > 0.001
+            ? cameraShutterRectangle
+            : null;
+        scissorRectangles[4] =
+          cameraControlsVisibility > 0.001
+            ? cameraModesRectangle
+            : null;
+        const scissorBounds = computeGlassScissorBounds(
+          scissorRectangles,
+          glassCanvas.width,
+          glassCanvas.height,
+          deviceScale,
+          GLASS_DRAW_MARGIN,
+        );
+        if (scissorBounds) {
+          gl.enable(gl.SCISSOR_TEST);
+          gl.scissor(
+            scissorBounds.x,
+            scissorBounds.y,
+            scissorBounds.width,
+            scissorBounds.height,
+          );
+        }
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        wasDrawing = true;
       }
 
       frame = window.requestAnimationFrame(render);

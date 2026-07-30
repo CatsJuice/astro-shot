@@ -1,14 +1,46 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { computeGlassScissorBounds } from "../app/liquid-glass-geometry.mjs";
+import {
+  firstStarAtOrBelowMagnitude,
+  projectCelestial,
+  setEquatorialCoordinates,
+  setSensorNoiseCrop,
+} from "../app/rendering-helpers.mjs";
 
 async function render() {
   return readFile(new URL("../out/index.html", import.meta.url), "utf8");
 }
 
+async function readBuiltStyles(html, basePath) {
+  const stylesheetUrls = [
+    ...html.matchAll(/<link[^>]+href="([^"]+\.css)"[^>]*>/g),
+  ].map((match) => match[1]);
+  const styles = await Promise.all(
+    stylesheetUrls.map((stylesheetUrl) => {
+      const pathname = new URL(
+        stylesheetUrl,
+        "https://astroshot.test",
+      ).pathname;
+      const unprefixed =
+        basePath && pathname.startsWith(`${basePath}/`)
+          ? pathname.slice(basePath.length)
+          : pathname;
+      const relativePath = decodeURIComponent(unprefixed).replace(/^\/+/, "");
+      return readFile(
+        new URL(`../out/${relativePath}`, import.meta.url),
+        "utf8",
+      );
+    }),
+  );
+  return styles.join("\n");
+}
+
 test("static export renders the AstroShot shell and controls", async () => {
   const html = await render();
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const builtStyles = await readBuiltStyles(html, basePath);
   const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002"
   ).replace(/\/$/, "");
@@ -46,8 +78,206 @@ test("static export renders the AstroShot shell and controls", async () => {
   assert.doesNotMatch(html, />LIVE</);
   assert.doesNotMatch(html, /夜航|NIGHTFALL|拖拽观察天穹| FPS/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
+  assert.doesNotMatch(
+    `${html}\n${builtStyles}`,
+    /Geist Mono|geist_mono|font-geist-mono/i,
+  );
 
   await access(new URL("../out/.nojekyll", import.meta.url));
+});
+
+test("optimized star projection matches the reference coordinate system", () => {
+  const width = 1920;
+  const height = 1080;
+  const focal = 960;
+  const actual = { x: 0, y: 0, altitude: 0, depth: 0 };
+  const star = {
+    equatorialX: 0,
+    equatorialY: 0,
+    equatorialZ: 0,
+  };
+  const views = [
+    [0, 0],
+    [2.2, 0.4],
+    [5.8, -0.1],
+  ];
+
+  for (const rightAscension of [0, 0.7, 2.5, 5.9]) {
+    for (const declination of [-1.1, -0.2, 0.8]) {
+      setEquatorialCoordinates(star, rightAscension, declination);
+      for (const sidereal of [0, 0.9, 4.8]) {
+        for (const latitude of [-1, 0, 0.9]) {
+          for (const [azimuth, altitude] of views) {
+            const sinAzimuth = Math.sin(azimuth);
+            const cosAzimuth = Math.cos(azimuth);
+            const sinAltitude = Math.sin(altitude);
+            const cosAltitude = Math.cos(altitude);
+            const basis = {
+              forward: [
+                sinAzimuth * cosAltitude,
+                cosAzimuth * cosAltitude,
+                sinAltitude,
+              ],
+              right: [cosAzimuth, -sinAzimuth, 0],
+              up: [
+                -sinAzimuth * sinAltitude,
+                -cosAzimuth * sinAltitude,
+                cosAltitude,
+              ],
+            };
+
+            const hourAngle = sidereal - rightAscension;
+            const sinDeclination = Math.sin(declination);
+            const cosDeclination = Math.cos(declination);
+            const referenceLocal = [
+              -cosDeclination * Math.sin(hourAngle),
+              sinDeclination * Math.cos(latitude) -
+                cosDeclination * Math.cos(hourAngle) * Math.sin(latitude),
+              sinDeclination * Math.sin(latitude) +
+                cosDeclination * Math.cos(hourAngle) * Math.cos(latitude),
+            ];
+            const referenceCameraX =
+              referenceLocal[0] * basis.right[0] +
+              referenceLocal[1] * basis.right[1] +
+              referenceLocal[2] * basis.right[2];
+            const referenceCameraY =
+              referenceLocal[0] * basis.up[0] +
+              referenceLocal[1] * basis.up[1] +
+              referenceLocal[2] * basis.up[2];
+            const referenceCameraZ =
+              referenceLocal[0] * basis.forward[0] +
+              referenceLocal[1] * basis.forward[1] +
+              referenceLocal[2] * basis.forward[2];
+            const referenceVisible = referenceCameraZ > 0.08;
+
+            const visible = projectCelestial(
+              star,
+              Math.sin(sidereal),
+              Math.cos(sidereal),
+              Math.sin(latitude),
+              Math.cos(latitude),
+              basis,
+              focal,
+              width,
+              height,
+              actual,
+            );
+            assert.equal(visible, referenceVisible);
+            if (!referenceVisible) continue;
+
+            const expected = {
+              x: width * 0.5 + (referenceCameraX / referenceCameraZ) * focal,
+              y: height * 0.5 - (referenceCameraY / referenceCameraZ) * focal,
+              altitude: referenceLocal[2],
+              depth: referenceCameraZ,
+            };
+            for (const key of ["x", "y", "altitude", "depth"]) {
+              assert.ok(
+                Math.abs(actual[key] - expected[key]) < 1e-8,
+                `${key} differs for RA=${rightAscension}, dec=${declination}`,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("magnitude cutoff preserves descending catalog boundaries", () => {
+  const stars = [7.5, 7, 7, 4, -1].map((magnitude) => ({ magnitude }));
+  for (const [visibleMagnitude, expectedIndex] of [
+    [8, 0],
+    [7.5, 0],
+    [7.25, 1],
+    [7, 1],
+    [6, 3],
+    [-1, 4],
+    [-2, 5],
+  ]) {
+    assert.equal(
+      firstStarAtOrBelowMagnitude(stars, visibleMagnitude),
+      expectedIndex,
+    );
+  }
+});
+
+test("sensor-noise crops are bounded, stable for five frames, and varied", () => {
+  for (const [width, height] of [
+    [220, 124],
+    [292, 148],
+    [360, 210],
+  ]) {
+    const uniqueCrops = new Set();
+    for (let sample = 0; sample < 64; sample += 1) {
+      const first = { x: 0, y: 0 };
+      setSensorNoiseCrop(first, sample * 5 + 1, width, height);
+      assert.ok(first.x >= 0 && first.x < width);
+      assert.ok(first.y >= 0 && first.y < height);
+      uniqueCrops.add(`${first.x},${first.y}`);
+
+      for (let offset = 1; offset < 5; offset += 1) {
+        const held = { x: 0, y: 0 };
+        setSensorNoiseCrop(
+          held,
+          sample * 5 + 1 + offset,
+          width,
+          height,
+        );
+        assert.deepEqual(held, first);
+      }
+    }
+    assert.ok(
+      uniqueCrops.size >= 60,
+      `${width}x${height} repeated too many crop windows`,
+    );
+  }
+});
+
+test("liquid-glass scissor bounds union, scale, flip, and clamp", () => {
+  assert.deepEqual(
+    computeGlassScissorBounds(
+      [
+        { left: 100, top: 200, width: 50, height: 40 },
+        { left: 300, top: 100, width: 20, height: 30 },
+      ],
+      1000,
+      800,
+      1,
+      10,
+    ),
+    { x: 90, y: 550, width: 240, height: 160 },
+  );
+  assert.deepEqual(
+    computeGlassScissorBounds(
+      [{ left: -5, top: 550, width: 100, height: 100 }],
+      1500,
+      900,
+      1.5,
+      20,
+    ),
+    { x: 0, y: 0, width: 173, height: 105 },
+  );
+  assert.equal(
+    computeGlassScissorBounds(
+      [null, { left: 20, top: 30, width: 0, height: 10 }],
+      1000,
+      800,
+      1,
+      10,
+    ),
+    null,
+  );
+  assert.equal(
+    computeGlassScissorBounds(
+      [{ left: 1100, top: 20, width: 50, height: 50 }],
+      1000,
+      800,
+      1,
+      0,
+    ),
+    null,
+  );
 });
 
 test("ships a real catalog and the temporal rendering systems", async () => {
@@ -76,6 +306,13 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   const catalog = JSON.parse(catalogText);
 
   assert.equal(catalog.count, catalog.stars.length);
+  assert.ok(
+    catalog.stars.every(
+      (star, index) =>
+        index === 0 || catalog.stars[index - 1][2] >= star[2],
+    ),
+    "star catalog must remain sorted from dimmest to brightest",
+  );
   assert.ok(catalog.count > 30_000);
   assert.ok(milkyWayPanorama.byteLength > 1_000_000);
   assert.match(source, /function temporalNoise\(/);
@@ -108,6 +345,10 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(source, /ordinaryTrackLength \/ Math\.max\(1, speed\)/);
   assert.match(source, /function screenToLocalDirection\(/);
   assert.match(source, /function projectLocalDirection\(/);
+  assert.match(source, /setEquatorialCoordinates\(star, row\[0\], row\[1\]\)/);
+  assert.match(source, /const projectedStar: ProjectedCelestial/);
+  assert.match(source, /defocus: seeded\(index \+ 2771\)/);
+  assert.match(source, /const projected = projectCelestial\(/);
   assert.match(source, /function projectMeteorForView\(/);
   assert.match(source, /angularVelocity: Vector3/);
   assert.match(
@@ -138,6 +379,8 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(source, /type MeteorVariant = "weak" \| "strong" \| null/);
   assert.match(source, /const imageMotion =/);
   assert.match(source, /noiseEnabled/);
+  assert.match(source, /setSensorNoiseCrop\(/);
+  assert.match(source, /noiseCanvas\.width = noiseSampleWidth \* 2/);
   assert.match(source, /globalCompositeOperation = "lighter"/);
   assert.match(source, /useState\(false\)/);
   assert.match(source, /<LiquidGlassMenu/);
@@ -148,6 +391,14 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(source, /<summary className="section-toggle">/);
   assert.doesNotMatch(source, /section-index/);
   assert.match(glassSource, /LIQUID_GLASS_FRAGMENT_SHADER/);
+  assert.match(glassSource, /const shouldDraw =/);
+  assert.match(glassSource, /computeGlassScissorBounds\(/);
+  assert.match(glassSource, /gl\.enable\(gl\.SCISSOR_TEST\)/);
+  assert.match(glassSource, /if \(wasDrawing \|\| resized\)/);
+  assert.match(
+    glassSource,
+    /float distance = scene_distance\(position\);[\s\S]*?distance > u_glass_secondary\.w \* 2\.5[\s\S]*?float surface_visibility = scene_visibility\(position\);/,
+  );
   assert.match(glassSource, /sd_smooth_round_rect/);
   assert.match(glassSource, /refract\(incident, surface_normal/);
   assert.match(glassSource, /texSubImage2D/);
