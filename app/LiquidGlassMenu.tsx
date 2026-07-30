@@ -60,8 +60,8 @@ type MenuGeometry = {
   buttonOpacity: number;
 };
 
-const BUTTON_SIZE = 50;
-const CLOSED_MENU_SIZE = 40;
+const BUTTON_SIZE = 44;
+const CLOSED_MENU_SIZE = 36;
 const CLOSED_MENU_RADIUS = 130;
 const CLOSED_MENU_CONTENT_BLUR = 8;
 const CLOSED_MENU_CONTENT_SCALE = 2;
@@ -444,7 +444,7 @@ const float SDF_SMOOTH_UNION_DEPTH = 0.25;
 const float SDF_NORMAL_ANGLE_INV_PI = 0.3183098861837907;
 const float SMOOTH_UNION_ACCELERATION = 0.35;
 const float CORNER_SMOOTHING = 0.6;
-const float CORNER_EXPONENT = 4.0;
+const float CORNER_EXPONENT = 2.0;
 const float GLASS_IOR = 1.5;
 const float GLASS_DISPERSION = 0.0;
 const float SPECULAR_STRENGTH = 1.0;

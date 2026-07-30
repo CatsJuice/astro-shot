@@ -1988,13 +1988,17 @@ export function SkySimulator() {
 
   useEffect(() => {
     const storedLocale = window.localStorage.getItem("sky-locale");
-    if (storedLocale === "zh-CN" || storedLocale === "en") {
-      setLocale(storedLocale);
+    const preferredLocale =
+      storedLocale === "zh-CN" || storedLocale === "en"
+        ? storedLocale
+        : window.navigator.language.toLowerCase().startsWith("zh")
+          ? "zh-CN"
+          : "en";
+    if (preferredLocale === "zh-CN") {
       return;
     }
-    if (!window.navigator.language.toLowerCase().startsWith("zh")) {
-      setLocale("en");
-    }
+    const localeTimer = window.setTimeout(() => setLocale(preferredLocale), 0);
+    return () => window.clearTimeout(localeTimer);
   }, []);
 
   useEffect(() => {

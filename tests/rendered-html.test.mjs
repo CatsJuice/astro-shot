@@ -136,8 +136,10 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(glassSource, /refract\(incident, surface_normal/);
   assert.match(glassSource, /texSubImage2D/);
   assert.match(glassSource, /onPointerDown=\{\(\) => onOpenChange\(false\)\}/);
-  assert.match(glassSource, /const BUTTON_SIZE = 50/);
-  assert.match(glassSource, /const CLOSED_MENU_SIZE = 40/);
+  assert.match(glassSource, /const BUTTON_SIZE = 44/);
+  assert.match(glassSource, /const CLOSED_MENU_SIZE = 36/);
+  assert.match(glassSource, /const float CORNER_EXPONENT = 2\.0/);
+  assert.match(glassSource, /return conservative_smooth_union\(/);
   assert.match(glassSource, /const MENU_WIDTH = 400/);
   assert.match(glassSource, /const MENU_MAX_HEIGHT = 680/);
   assert.match(glassSource, /const OPEN_MENU_RADIUS = 40/);
