@@ -11,6 +11,13 @@ import {
 } from "react";
 import { CameraSystem } from "./CameraSystem";
 import { LiquidGlassMenu } from "./LiquidGlassMenu";
+import {
+  firstStarAtOrBelowMagnitude,
+  projectCelestial,
+  seeded,
+  setEquatorialCoordinates,
+  setSensorNoiseCrop,
+} from "./rendering-helpers.mjs";
 import { withBasePath } from "./site-path";
 
 type CatalogRow = [
@@ -27,14 +34,21 @@ type Catalog = {
 };
 
 type RenderStar = {
-  ra: number;
-  sinDec: number;
-  cosDec: number;
+  equatorialX: number;
+  equatorialY: number;
+  equatorialZ: number;
   magnitude: number;
   color: [number, number, number];
   phase: number;
   frequency: number;
-  name: string | null;
+  defocus: number;
+};
+
+type ProjectedCelestial = {
+  x: number;
+  y: number;
+  altitude: number;
+  depth: number;
 };
 
 type Settings = {
@@ -163,11 +177,6 @@ function smoothstep(edge0: number, edge1: number, value: number) {
   return t * t * (3 - 2 * t);
 }
 
-function seeded(index: number) {
-  const value = Math.sin(index * 91.171 + 17.371) * 43758.5453;
-  return value - Math.floor(value);
-}
-
 function temporalNoise(time: number, seed: number) {
   const integer = Math.floor(time);
   const fraction = time - integer;
@@ -244,8 +253,10 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
   const gl = canvas.getContext("webgl", {
     alpha: true,
     antialias: false,
+    depth: false,
     premultipliedAlpha: false,
-    preserveDrawingBuffer: true,
+    preserveDrawingBuffer: false,
+    stencil: false,
   });
   if (!gl) return null;
 
@@ -443,6 +454,7 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
   const latitudeLocation = gl.getUniformLocation(program, "u_latitude");
   const siderealLocation = gl.getUniformLocation(program, "u_sidereal");
   const intensityLocation = gl.getUniformLocation(program, "u_intensity");
+  const cameraMatrix = new Float32Array(9);
 
   return {
     canvas,
@@ -474,20 +486,19 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
       gl.uniform1i(panoramaLocation, 0);
       gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
       gl.uniform1f(fieldOfViewLocation, Math.tan(fieldOfView * 0.5));
+      cameraMatrix[0] = basis.right[0];
+      cameraMatrix[1] = basis.right[1];
+      cameraMatrix[2] = basis.right[2];
+      cameraMatrix[3] = basis.up[0];
+      cameraMatrix[4] = basis.up[1];
+      cameraMatrix[5] = basis.up[2];
+      cameraMatrix[6] = basis.forward[0];
+      cameraMatrix[7] = basis.forward[1];
+      cameraMatrix[8] = basis.forward[2];
       gl.uniformMatrix3fv(
         cameraLocation,
         false,
-        new Float32Array([
-          basis.right[0],
-          basis.right[1],
-          basis.right[2],
-          basis.up[0],
-          basis.up[1],
-          basis.up[2],
-          basis.forward[0],
-          basis.forward[1],
-          basis.forward[2],
-        ]),
+        cameraMatrix,
       );
       gl.uniform1f(latitudeLocation, latitude);
       gl.uniform1f(siderealLocation, sidereal);
@@ -607,48 +618,6 @@ function projectLocalDirection(
   const cameraY = dotVector3(local, basis.up);
   const cameraZ = dotVector3(local, basis.forward);
   if (cameraZ <= 0.025) return null;
-  return {
-    x: width * 0.5 + (cameraX / cameraZ) * focal,
-    y: height * 0.5 - (cameraY / cameraZ) * focal,
-    altitude: local[2],
-    depth: cameraZ,
-  };
-}
-
-function projectCelestial(
-  ra: number,
-  sinDec: number,
-  cosDec: number,
-  sidereal: number,
-  latitude: number,
-  basis: ReturnType<typeof basisForView>,
-  focal: number,
-  width: number,
-  height: number,
-) {
-  const hourAngle = sidereal - ra;
-  const sinHourAngle = Math.sin(hourAngle);
-  const cosHourAngle = Math.cos(hourAngle);
-  const sinLatitude = Math.sin(latitude);
-  const cosLatitude = Math.cos(latitude);
-  const local = [
-    -cosDec * sinHourAngle,
-    sinDec * cosLatitude - cosDec * cosHourAngle * sinLatitude,
-    sinDec * sinLatitude + cosDec * cosHourAngle * cosLatitude,
-  ];
-  const cameraX =
-    local[0] * basis.right[0] +
-    local[1] * basis.right[1] +
-    local[2] * basis.right[2];
-  const cameraY =
-    local[0] * basis.up[0] +
-    local[1] * basis.up[1] +
-    local[2] * basis.up[2];
-  const cameraZ =
-    local[0] * basis.forward[0] +
-    local[1] * basis.forward[1] +
-    local[2] * basis.forward[2];
-  if (cameraZ <= 0.08) return null;
   return {
     x: width * 0.5 + (cameraX / cameraZ) * focal,
     y: height * 0.5 - (cameraY / cameraZ) * focal,
@@ -2091,11 +2060,19 @@ export function SkySimulator() {
     let pointerY = 0;
     const view = { ...DEFAULT_VIEW };
     const meteors: Meteor[] = [];
+    const projectedStar: ProjectedCelestial = {
+      x: 0,
+      y: 0,
+      altitude: 0,
+      depth: 0,
+    };
     const galacticPanorama = createGalacticPanoramaRenderer();
     const noiseCanvas = document.createElement("canvas");
     const noiseContext = noiseCanvas.getContext("2d");
-    let noiseImage: ImageData | null = null;
+    let noiseSampleWidth = 1;
+    let noiseSampleHeight = 1;
     let noiseFrame = 0;
+    const noiseCrop = { x: 0, y: 0 };
 
     const resize = () => {
       const rectangle = canvas.getBoundingClientRect();
@@ -2105,15 +2082,37 @@ export function SkySimulator() {
       canvas.width = Math.round(width * deviceScale);
       canvas.height = Math.round(height * deviceScale);
       context.setTransform(deviceScale, 0, 0, deviceScale, 0, 0);
-      noiseCanvas.width = Math.min(360, Math.max(220, Math.round(width * 0.28)));
-      noiseCanvas.height = Math.min(
+      noiseSampleWidth = Math.min(
+        360,
+        Math.max(220, Math.round(width * 0.28)),
+      );
+      noiseSampleHeight = Math.min(
         210,
         Math.max(124, Math.round(height * 0.28)),
       );
-      noiseImage = noiseContext?.createImageData(
+      noiseCanvas.width = noiseSampleWidth * 2;
+      noiseCanvas.height = noiseSampleHeight * 2;
+      const noiseTexture = noiseContext?.createImageData(
         noiseCanvas.width,
         noiseCanvas.height,
-      ) ?? null;
+      );
+      if (noiseContext && noiseTexture) {
+        const pixels = noiseTexture.data;
+        let state =
+          (noiseSampleWidth * 73856093) ^
+          (noiseSampleHeight * 19349663) ^
+          0x9e3779b9;
+        for (let index = 0; index < pixels.length; index += 4) {
+          state = (state * 1664525 + 1013904223) >>> 0;
+          const grain = 72 + ((state & 0xffff) / 0xffff) * 156;
+          const tint = ((state >>> 16) / 0xffff - 0.5) * 18;
+          pixels[index] = grain - tint * 0.3;
+          pixels[index + 1] = grain + tint;
+          pixels[index + 2] = grain - tint * 0.15;
+          pixels[index + 3] = 255;
+        }
+        noiseContext.putImageData(noiseTexture, 0, 0);
+      }
     };
 
     const resizeObserver = new ResizeObserver(resize);
@@ -2127,16 +2126,20 @@ export function SkySimulator() {
       })
       .then((catalog) => {
         if (destroyed) return;
-        stars = catalog.stars.map((row, index) => ({
-          ra: row[0],
-          sinDec: Math.sin(row[1]),
-          cosDec: Math.cos(row[1]),
-          magnitude: row[2],
-          color: colorFromBv(row[3]),
-          phase: seeded(index + 11) * TAU,
-          frequency: 0.55 + seeded(index + 711) * 2.4,
-          name: row[4],
-        }));
+        stars = catalog.stars.map((row, index) => {
+          const star: RenderStar = {
+            equatorialX: 0,
+            equatorialY: 0,
+            equatorialZ: 0,
+            magnitude: row[2],
+            color: colorFromBv(row[3]),
+            phase: seeded(index + 11) * TAU,
+            frequency: 0.55 + seeded(index + 711) * 2.4,
+            defocus: seeded(index + 2771),
+          };
+          setEquatorialCoordinates(star, row[0], row[1]);
+          return star;
+        });
         setCatalogCount(catalog.count);
         setCatalogReady(true);
       })
@@ -2287,6 +2290,10 @@ export function SkySimulator() {
       now: number,
     ) => {
       const latitude = settingsNow.latitude * DEG;
+      const sinLatitude = Math.sin(latitude);
+      const cosLatitude = Math.cos(latitude);
+      const sinSidereal = Math.sin(sidereal);
+      const cosSidereal = Math.cos(sidereal);
       const visibleMagnitude =
         6.48 +
         (settingsNow.starExposure - 0.78) * 0.62 -
@@ -2298,34 +2305,44 @@ export function SkySimulator() {
       context.globalCompositeOperation = "lighter";
       let visibleCount = 0;
 
-      for (let index = 0; index < stars.length; index += 1) {
+      const firstVisibleIndex = firstStarAtOrBelowMagnitude(
+        stars,
+        visibleMagnitude,
+      );
+      for (
+        let index = firstVisibleIndex;
+        index < stars.length;
+        index += 1
+      ) {
         const star = stars[index];
-        if (star.magnitude > visibleMagnitude) continue;
-        const point = projectCelestial(
-          star.ra,
-          star.sinDec,
-          star.cosDec,
-          sidereal,
-          latitude,
+        const projected = projectCelestial(
+          star,
+          sinSidereal,
+          cosSidereal,
+          sinLatitude,
+          cosLatitude,
           basis,
           focal,
           width,
           height,
+          projectedStar,
         );
         if (
-          !point ||
-          point.x < -8 ||
-          point.x > width + 8 ||
-          point.y < -8 ||
-          point.y > height + 8 ||
-          point.altitude < -0.018
+          !projected ||
+          projectedStar.x < -8 ||
+          projectedStar.x > width + 8 ||
+          projectedStar.y < -8 ||
+          projectedStar.y > height + 8 ||
+          projectedStar.altitude < -0.018
         ) {
           continue;
         }
 
-        const atmosphere = smoothstep(-0.018, 0.14, point.altitude);
+        const atmosphere = smoothstep(-0.018, 0.14, projectedStar.altitude);
         const horizonScintillation =
-          0.42 + 0.58 * (1 - smoothstep(0.025, 0.68, point.altitude));
+          0.42 +
+          0.58 *
+            (1 - smoothstep(0.025, 0.68, projectedStar.altitude));
         const slowNoise = temporalNoise(
           now * star.frequency * 3.1 + star.phase,
           index + 31,
@@ -2355,7 +2372,7 @@ export function SkySimulator() {
         const scintillation = Math.exp(
           scintillationAmplitude * scintillationSignal,
         );
-        const defocus = seeded(index + 2771);
+        const defocus = star.defocus;
         const focusTransmission =
           1 - defocus * (1 - visibility) * 0.22;
         const alpha = clamp(
@@ -2380,14 +2397,14 @@ export function SkySimulator() {
           horizonScintillation *
           (0.08 + (1 - visibility) * 0.16);
         const starX =
-          point.x +
+          projectedStar.x +
           temporalNoise(
             now * (8.2 + star.frequency * 1.7) + star.phase * 2.9,
             index + 4271,
           ) *
             imageMotion;
         const starY =
-          point.y +
+          projectedStar.y +
           temporalNoise(
             now * (9.4 + star.frequency * 1.3) + star.phase * 3.7,
             index + 5297,
@@ -2508,30 +2525,35 @@ export function SkySimulator() {
         !settingsNow.noiseEnabled ||
         settingsNow.sensorNoise <= 0 ||
         !noiseContext ||
-        !noiseImage
+        noiseSampleWidth <= 0 ||
+        noiseSampleHeight <= 0
       ) {
         return;
       }
 
       noiseFrame += 1;
-      if (noiseFrame % 5 === 1) {
-        const pixels = noiseImage.data;
-        for (let index = 0; index < pixels.length; index += 4) {
-          const grain = 72 + Math.random() * 156;
-          const tint = (Math.random() - 0.5) * 18;
-          pixels[index] = grain - tint * 0.3;
-          pixels[index + 1] = grain + tint;
-          pixels[index + 2] = grain - tint * 0.15;
-          pixels[index + 3] = 255;
-        }
-        noiseContext.putImageData(noiseImage, 0, 0);
-      }
+      setSensorNoiseCrop(
+        noiseCrop,
+        noiseFrame,
+        noiseSampleWidth,
+        noiseSampleHeight,
+      );
 
       context.save();
       context.globalCompositeOperation = "screen";
       context.globalAlpha = 0.012 + settingsNow.sensorNoise * 0.052;
       context.imageSmoothingEnabled = true;
-      context.drawImage(noiseCanvas, 0, 0, width, height);
+      context.drawImage(
+        noiseCanvas,
+        noiseCrop.x,
+        noiseCrop.y,
+        noiseSampleWidth,
+        noiseSampleHeight,
+        0,
+        0,
+        width,
+        height,
+      );
       context.restore();
     };
 
