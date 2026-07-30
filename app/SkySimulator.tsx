@@ -18,7 +18,15 @@ import {
   setEquatorialCoordinates,
   setSensorNoiseCrop,
 } from "./rendering-helpers.mjs";
-import { withBasePath } from "./site-path";
+import { pinchRatio, pointerDistance } from "./pinch-gesture.mjs";
+import { createOpeningFireballCue } from "./opening-fireball.mjs";
+import { resolveInitialLocale } from "./locale-preference.mjs";
+import {
+  defaultLocale,
+  getBundledXhsData,
+  isXhsBuild,
+  withBasePath,
+} from "./site-path";
 
 type CatalogRow = [
   rightAscension: number,
@@ -118,6 +126,12 @@ type Meteor = {
   flareStrength: number;
   seed: number;
   points: TrailPoint[];
+};
+
+type MeteorSpawnOptions = {
+  angleDegrees?: number;
+  originX?: number;
+  originY?: number;
 };
 
 type GalacticPanoramaRenderer = {
@@ -636,13 +650,18 @@ function createMeteor(
   focal: number,
   forced = false,
   variant: MeteorVariant = null,
+  spawnOptions: MeteorSpawnOptions = {},
 ): Meteor {
   let angleDegrees =
+    spawnOptions.angleDegrees ??
     settings.meteorAngle +
-    (Math.random() - 0.5) * settings.directionSpread;
+      (Math.random() - 0.5) * settings.directionSpread;
   // Sporadic meteors do not share one radiant. With wider spread enabled,
   // some tracks cross the frame in the opposite direction as well.
-  if (Math.random() < Math.min(0.42, settings.directionSpread / 360)) {
+  if (
+    spawnOptions.angleDegrees === undefined &&
+    Math.random() < Math.min(0.42, settings.directionSpread / 360)
+  ) {
     angleDegrees += 180;
   }
   const angle = angleDegrees * DEG;
@@ -695,7 +714,13 @@ function createMeteor(
 
   let x: number;
   let y: number;
-  if (forced) {
+  if (
+    spawnOptions.originX !== undefined &&
+    spawnOptions.originY !== undefined
+  ) {
+    x = width * spawnOptions.originX;
+    y = height * spawnOptions.originY;
+  } else if (forced) {
     x = directionX >= 0 ? width * 0.12 : width * 0.88;
     y = height * (0.2 + Math.random() * 0.5);
   } else if (kind === "ordinary") {
@@ -1726,20 +1751,22 @@ function SettingsPanel({
             <span className="locale-divider">/</span>
             <span className={locale === "en" ? "active" : ""}>EN</span>
           </button>
-          <a
-            className="github-link"
-            href="https://github.com/CatsJuice/astro-shot"
-            target="_blank"
-            rel="noreferrer"
-            aria-label={copy.githubLabel}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M12 .7a11.6 11.6 0 0 0-3.67 22.6c.58.1.79-.25.79-.56v-2.25c-3.24.7-3.92-1.38-3.92-1.38-.53-1.35-1.3-1.71-1.3-1.71-1.06-.73.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.4-1.27.74-1.56-2.59-.3-5.31-1.3-5.31-5.74 0-1.27.45-2.3 1.2-3.12-.12-.3-.52-1.48.11-3.08 0 0 .98-.31 3.19 1.19a11 11 0 0 1 5.8 0c2.21-1.5 3.18-1.19 3.18-1.19.64 1.6.24 2.78.12 3.08.75.82 1.2 1.85 1.2 3.12 0 4.46-2.73 5.44-5.32 5.73.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.6 11.6 0 0 0 12 .7Z"
-              />
-            </svg>
-          </a>
+          {!isXhsBuild && (
+            <a
+              className="github-link"
+              href="https://github.com/CatsJuice/astro-shot"
+              target="_blank"
+              rel="noreferrer"
+              aria-label={copy.githubLabel}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M12 .7a11.6 11.6 0 0 0-3.67 22.6c.58.1.79-.25.79-.56v-2.25c-3.24.7-3.92-1.38-3.92-1.38-.53-1.35-1.3-1.71-1.3-1.71-1.06-.73.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.1-.76.4-1.27.74-1.56-2.59-.3-5.31-1.3-5.31-5.74 0-1.27.45-2.3 1.2-3.12-.12-.3-.52-1.48.11-3.08 0 0 .98-.31 3.19 1.19a11 11 0 0 1 5.8 0c2.21-1.5 3.18-1.19 3.18-1.19.64 1.6.24 2.78.12 3.08.75.82 1.2 1.85 1.2 3.12 0 4.46-2.73 5.44-5.32 5.73.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.6 11.6 0 0 0 12 .7Z"
+                />
+              </svg>
+            </a>
+          )}
         </div>
       </div>
 
@@ -2006,17 +2033,22 @@ export function SkySimulator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [captureLocked, setCaptureLocked] = useState(false);
-  const [locale, setLocale] = useState<Locale>("en");
+  const [locale, setLocale] = useState<Locale>(defaultLocale);
   const [catalogCount, setCatalogCount] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
   const copy = UI_COPY[locale];
 
   useEffect(() => {
     const storedLocale = window.localStorage.getItem("sky-locale");
-    if (storedLocale !== "zh-CN") {
-      return;
-    }
-    const localeTimer = window.setTimeout(() => setLocale("zh-CN"), 0);
+    const preferredLocale = resolveInitialLocale(
+      storedLocale,
+      defaultLocale,
+    ) as Locale;
+    if (preferredLocale === defaultLocale) return;
+    const localeTimer = window.setTimeout(
+      () => setLocale(preferredLocale),
+      0,
+    );
     return () => window.clearTimeout(localeTimer);
   }, []);
 
@@ -2054,10 +2086,16 @@ export function SkySimulator() {
     let sidereal = currentSiderealAngle();
     let previousTime = performance.now() / 1000;
     let nextMeteorTime = previousTime + 0.75;
+    let openingFireballTime = Number.POSITIVE_INFINITY;
+    let openingFireballSpawned = false;
+    const openingFireballCue = createOpeningFireballCue();
     let destroyed = false;
     let dragging = false;
     let pointerX = 0;
     let pointerY = 0;
+    const activePointers = new Map<number, { x: number; y: number }>();
+    let pinchStartDistance = 0;
+    let pinchStartFieldOfView = DEFAULT_VIEW.fov;
     const view = { ...DEFAULT_VIEW };
     const meteors: Meteor[] = [];
     const projectedStar: ProjectedCelestial = {
@@ -2119,12 +2157,16 @@ export function SkySimulator() {
     resizeObserver.observe(canvas);
     resize();
 
-    fetch(withBasePath("/data/stars.json"))
-      .then((response) => {
-        if (!response.ok) throw new Error("Unable to load star catalogue");
-        return response.json() as Promise<Catalog>;
-      })
+    const catalogPromise = isXhsBuild
+      ? Promise.resolve(getBundledXhsData<Catalog>("starCatalog"))
+      : fetch(withBasePath("/data/stars.json")).then((response) => {
+          if (!response.ok) throw new Error("Unable to load star catalogue");
+          return response.json() as Promise<Catalog>;
+        });
+
+    catalogPromise
       .then((catalog) => {
+        if (!catalog) throw new Error("Bundled star catalogue is missing");
         if (destroyed) return;
         stars = catalog.stars.map((row, index) => {
           const star: RenderStar = {
@@ -2142,6 +2184,8 @@ export function SkySimulator() {
         });
         setCatalogCount(catalog.count);
         setCatalogReady(true);
+        openingFireballTime =
+          performance.now() / 1000 + openingFireballCue.delay;
       })
       .catch(() => {
         if (!destroyed) setCatalogReady(false);
@@ -2152,6 +2196,7 @@ export function SkySimulator() {
       now: number,
       forced = false,
       variant: MeteorVariant = null,
+      spawnOptions: MeteorSpawnOptions = {},
     ) => {
       const spawnBasis = basisForView(view);
       const spawnFocal = height / (2 * Math.tan(view.fov * 0.5));
@@ -2166,6 +2211,7 @@ export function SkySimulator() {
           spawnFocal,
           forced,
           variant,
+          spawnOptions,
         ),
       );
     };
@@ -2188,13 +2234,50 @@ export function SkySimulator() {
 
     const pointerDown = (event: PointerEvent) => {
       if (interactionLockedRef.current) return;
-      dragging = true;
-      pointerX = event.clientX;
-      pointerY = event.clientY;
+      if (
+        activePointers.size >= 2 &&
+        !activePointers.has(event.pointerId)
+      ) {
+        return;
+      }
+      activePointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
       canvas.setPointerCapture(event.pointerId);
+      if (activePointers.size === 1) {
+        dragging = true;
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        return;
+      }
+      if (activePointers.size === 2) {
+        const [first, second] = [...activePointers.values()];
+        dragging = false;
+        pinchStartDistance = pointerDistance(first, second);
+        pinchStartFieldOfView = view.fov;
+      }
     };
     const pointerMove = (event: PointerEvent) => {
       if (interactionLockedRef.current) {
+        dragging = false;
+        activePointers.clear();
+        return;
+      }
+      if (!activePointers.has(event.pointerId)) return;
+      activePointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      if (activePointers.size >= 2) {
+        const [first, second] = [...activePointers.values()];
+        const currentDistance = pointerDistance(first, second);
+        view.fov = clamp(
+          pinchStartFieldOfView /
+            pinchRatio(pinchStartDistance, currentDistance),
+          30 * DEG,
+          86 * DEG,
+        );
         dragging = false;
         return;
       }
@@ -2207,10 +2290,21 @@ export function SkySimulator() {
       pointerY = event.clientY;
     };
     const pointerUp = (event: PointerEvent) => {
-      dragging = false;
+      activePointers.delete(event.pointerId);
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId);
       }
+      pinchStartDistance = 0;
+      if (activePointers.size === 1) {
+        const remainingPointer = activePointers.values().next().value;
+        if (remainingPointer) {
+          pointerX = remainingPointer.x;
+          pointerY = remainingPointer.y;
+          dragging = true;
+        }
+        return;
+      }
+      dragging = false;
     };
     const wheel = (event: WheelEvent) => {
       if (interactionLockedRef.current) return;
@@ -2558,6 +2652,26 @@ export function SkySimulator() {
     };
 
     const updateMeteors = (delta: number, now: number, settingsNow: Settings) => {
+      if (
+        !settingsNow.paused &&
+        !openingFireballSpawned &&
+        now >= openingFireballTime
+      ) {
+        spawn(
+          "fireball",
+          now,
+          true,
+          openingFireballCue.variant as MeteorVariant,
+          {
+            angleDegrees: openingFireballCue.angleDegrees,
+            originX: openingFireballCue.originX,
+            originY: openingFireballCue.originY,
+          },
+        );
+        openingFireballSpawned = true;
+        nextMeteorTime = Math.max(nextMeteorTime, now + 1.4);
+      }
+
       if (!settingsNow.paused && settingsNow.meteorRate > 0 && now >= nextMeteorTime) {
         const chance = 1 - settingsNow.ordinaryMeteorRatio / 100;
         spawn(Math.random() < chance ? "fireball" : "ordinary", now);

@@ -3,6 +3,8 @@
 :root {
   --background: #020706;
   --foreground: #eef5ef;
+  --font-geist-sans: -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --glass-tint: rgba(40, 40, 40, 0.4);
   --glass-foreground: #f5f7ff;
   --glass-muted: rgba(245, 247, 255, 0.56);
@@ -40,6 +42,22 @@
   --tabs-text-active: #ffffff;
   --tabs-bar-bg: rgba(34, 38, 43, 0.48);
   --tabs-pill-bg: rgba(245, 247, 255, 0.16);
+  --app-safe-area-inset-top: var(
+    --safe-area-inset-top,
+    env(safe-area-inset-top, 0px)
+  );
+  --app-safe-area-inset-right: var(
+    --safe-area-inset-right,
+    env(safe-area-inset-right, 0px)
+  );
+  --app-safe-area-inset-bottom: var(
+    --safe-area-inset-bottom,
+    env(safe-area-inset-bottom, 0px)
+  );
+  --app-safe-area-inset-left: var(
+    --safe-area-inset-left,
+    env(safe-area-inset-left, 0px)
+  );
 }
 
 @theme inline {
@@ -63,6 +81,14 @@ body {
   font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei",
     sans-serif;
   font-synthesis: none;
+}
+
+html {
+  touch-action: manipulation;
+}
+
+body {
+  -webkit-touch-callout: none;
 }
 
 button,
@@ -176,6 +202,7 @@ button {
   left: 50%;
   top: 50%;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   color: var(--glass-foreground);
   font-family:
@@ -731,9 +758,9 @@ button {
   .control-panel {
     padding:
       20px
-      max(30px, env(safe-area-inset-right))
-      max(20px, env(safe-area-inset-bottom))
-      max(30px, env(safe-area-inset-left));
+      max(30px, var(--app-safe-area-inset-right))
+      max(20px, var(--app-safe-area-inset-bottom))
+      max(30px, var(--app-safe-area-inset-left));
   }
 }
 
@@ -901,7 +928,7 @@ button {
 .camera-controls {
   position: fixed;
   left: 50%;
-  bottom: max(20px, env(safe-area-inset-bottom));
+  bottom: max(20px, var(--app-safe-area-inset-bottom));
   z-index: 7;
   display: flex;
   flex-direction: column;
@@ -1283,10 +1310,10 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
   display: grid;
   min-height: 72px;
   padding:
-    max(14px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right))
+    max(14px, var(--app-safe-area-inset-top))
+    max(20px, var(--app-safe-area-inset-right))
     12px
-    max(24px, env(safe-area-inset-left));
+    max(24px, var(--app-safe-area-inset-left));
   align-items: center;
   grid-template-columns: minmax(0, 1fr) auto;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -1342,10 +1369,11 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
   min-height: 0;
   padding:
     20px
-    max(20px, env(safe-area-inset-right))
-    max(20px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
+    max(20px, var(--app-safe-area-inset-right))
+    max(20px, var(--app-safe-area-inset-bottom))
+    max(20px, var(--app-safe-area-inset-left));
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   align-content: start;
   gap: 12px;
@@ -1440,7 +1468,7 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
 .gallery-detail-actions {
   position: absolute;
   top: 16px;
-  right: max(20px, env(safe-area-inset-right));
+  right: max(20px, var(--app-safe-area-inset-right));
   z-index: 4;
   display: flex;
   gap: 8px;
@@ -1588,6 +1616,7 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
   height: 100%;
   overflow: hidden;
   place-items: center;
+  touch-action: none;
 }
 
 .gallery-detail-media {
@@ -1613,15 +1642,16 @@ video.gallery-detail-media {
 .gallery-detail[data-kind="video"] {
   padding:
     0
-    max(8px, env(safe-area-inset-right))
-    max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
+    max(8px, var(--app-safe-area-inset-right))
+    max(8px, var(--app-safe-area-inset-bottom))
+    max(8px, var(--app-safe-area-inset-left));
   touch-action: auto;
 }
 
 .gallery-detail[data-kind="video"] .gallery-detail-media-wrap {
   max-width: 100%;
   max-height: 100%;
+  touch-action: auto;
 }
 
 .gallery-info-sheet {
@@ -1633,10 +1663,11 @@ video.gallery-detail-media {
   max-height: min(48dvh, 420px);
   padding:
     20px
-    max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom))
-    max(24px, env(safe-area-inset-left));
+    max(24px, var(--app-safe-area-inset-right))
+    max(24px, var(--app-safe-area-inset-bottom))
+    max(24px, var(--app-safe-area-inset-left));
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(11, 15, 18, 0.84);
   box-shadow: 0 -20px 54px rgba(0, 0, 0, 0.28);
@@ -1737,7 +1768,7 @@ video.gallery-detail-media {
 .camera-toast {
   position: fixed;
   left: 50%;
-  top: max(20px, env(safe-area-inset-top));
+  top: max(20px, var(--app-safe-area-inset-top));
   z-index: 30;
   max-width: min(360px, calc(100vw - 32px));
   padding: 9px 13px;
@@ -1769,12 +1800,12 @@ video.gallery-detail-media {
 
 @media (max-width: 720px) {
   .camera-mode-trigger {
-    right: max(68px, calc(68px + env(safe-area-inset-right)));
-    bottom: max(14px, env(safe-area-inset-bottom));
+    right: max(68px, calc(68px + var(--app-safe-area-inset-right)));
+    bottom: max(14px, var(--app-safe-area-inset-bottom));
   }
 
   .camera-controls {
-    bottom: calc(82px + env(safe-area-inset-bottom));
+    bottom: calc(82px + var(--app-safe-area-inset-bottom));
   }
 
   .camera-shutter {
@@ -1800,8 +1831,8 @@ video.gallery-detail-media {
   }
 
   .gallery-stack {
-    left: max(14px, env(safe-area-inset-left));
-    bottom: max(14px, env(safe-area-inset-bottom));
+    left: max(14px, var(--app-safe-area-inset-left));
+    bottom: max(14px, var(--app-safe-area-inset-bottom));
   }
 
   .gallery-dialog {
@@ -1812,18 +1843,18 @@ video.gallery-detail-media {
   .gallery-header {
     min-height: 64px;
     padding:
-      max(10px, env(safe-area-inset-top))
-      max(14px, env(safe-area-inset-right))
+      max(10px, var(--app-safe-area-inset-top))
+      max(14px, var(--app-safe-area-inset-right))
       10px
-      max(16px, env(safe-area-inset-left));
+      max(16px, var(--app-safe-area-inset-left));
   }
 
   .gallery-grid {
     padding:
       8px
-      max(8px, env(safe-area-inset-right))
-      max(8px, env(safe-area-inset-bottom))
-      max(8px, env(safe-area-inset-left));
+      max(8px, var(--app-safe-area-inset-right))
+      max(8px, var(--app-safe-area-inset-bottom))
+      max(8px, var(--app-safe-area-inset-left));
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
@@ -1841,7 +1872,7 @@ video.gallery-detail-media {
 
   .gallery-detail-actions {
     top: 12px;
-    right: max(12px, env(safe-area-inset-right));
+    right: max(12px, var(--app-safe-area-inset-right));
   }
 
   .gallery-detail-action {
@@ -1852,9 +1883,9 @@ video.gallery-detail-media {
   .gallery-info-sheet {
     padding:
       18px
-      max(18px, env(safe-area-inset-right))
-      max(18px, env(safe-area-inset-bottom))
-      max(18px, env(safe-area-inset-left));
+      max(18px, var(--app-safe-area-inset-right))
+      max(18px, var(--app-safe-area-inset-bottom))
+      max(18px, var(--app-safe-area-inset-left));
   }
 
   .gallery-info-sheet dl {

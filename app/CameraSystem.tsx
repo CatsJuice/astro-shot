@@ -6,10 +6,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import { pinchRatio, pointerDistance } from "./pinch-gesture.mjs";
+import { isXhsBuild } from "./site-path";
 
 export type CaptureMode = "video" | "photo" | "long-exposure";
 type CaptureKind = CaptureMode;
@@ -88,7 +91,7 @@ const COPY = {
     duration: "时长",
     dimensions: "尺寸",
     fileType: "文件类型",
-    zoomHint: "滚轮缩放",
+    zoomHint: "双指或滚轮缩放",
     empty: "还没有拍摄内容",
   },
   en: {
@@ -124,7 +127,7 @@ const COPY = {
     duration: "Duration",
     dimensions: "Dimensions",
     fileType: "File type",
-    zoomHint: "Scroll to zoom",
+    zoomHint: "Pinch or scroll to zoom",
     empty: "No captures yet",
   },
 } as const;
@@ -342,6 +345,13 @@ export function CameraSystem({
   const tabPillRef = useRef<HTMLSpanElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const galleryActionsRef = useRef<HTMLDivElement>(null);
+  const photoPointersRef = useRef(
+    new Map<number, { x: number; y: number }>(),
+  );
+  const photoPinchRef = useRef<{
+    distance: number;
+    zoom: number;
+  } | null>(null);
   const objectUrlsRef = useRef(new Set<string>());
   const galleryLoadedRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
@@ -357,6 +367,11 @@ export function CameraSystem({
   const selectedCapture =
     captures.find((capture) => capture.id === selectedId) ?? null;
   const hideIdleUi = !active && uiIdle;
+
+  useEffect(() => {
+    photoPointersRef.current.clear();
+    photoPinchRef.current = null;
+  }, [selectedId]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -855,7 +870,63 @@ export function CameraSystem({
     setZoom((current) => Math.min(6, Math.max(1, current + direction * 0.25)));
   };
 
+  const handlePhotoPointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (!selectedCapture || selectedCapture.kind === "video") return;
+    if (
+      photoPointersRef.current.size >= 2 &&
+      !photoPointersRef.current.has(event.pointerId)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    photoPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (photoPointersRef.current.size === 2) {
+      const [first, second] = [...photoPointersRef.current.values()];
+      photoPinchRef.current = {
+        distance: pointerDistance(first, second),
+        zoom,
+      };
+    }
+  };
+
+  const handlePhotoPointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (!photoPointersRef.current.has(event.pointerId)) return;
+    photoPointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const pinch = photoPinchRef.current;
+    if (!pinch || photoPointersRef.current.size < 2) return;
+    event.preventDefault();
+    const [first, second] = [...photoPointersRef.current.values()];
+    const nextZoom =
+      pinch.zoom *
+      pinchRatio(pinch.distance, pointerDistance(first, second));
+    setZoom(Math.min(6, Math.max(1, nextZoom)));
+  };
+
+  const handlePhotoPointerEnd = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    photoPointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (photoPointersRef.current.size < 2) {
+      photoPinchRef.current = null;
+    }
+  };
+
   const downloadSelectedCapture = () => {
+    if (isXhsBuild) return;
     if (!selectedCapture) return;
     const anchor = document.createElement("a");
     anchor.href = selectedCapture.url;
@@ -1118,16 +1189,18 @@ export function CameraSystem({
                     aria-hidden={!moreOpen}
                     inert={!moreOpen}
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={downloadSelectedCapture}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M12 4v10M8 10l4 4 4-4M5 19h14" />
-                      </svg>
-                      {copy.downloadOriginal}
-                    </button>
+                    {!isXhsBuild && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={downloadSelectedCapture}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                        </svg>
+                        {copy.downloadOriginal}
+                      </button>
+                    )}
                     <button
                       className="danger"
                       type="button"
@@ -1144,6 +1217,10 @@ export function CameraSystem({
                 <div
                   className="gallery-detail-media-wrap"
                   style={viewTransitionStyle(selectedCapture.id)}
+                  onPointerDown={handlePhotoPointerDown}
+                  onPointerMove={handlePhotoPointerMove}
+                  onPointerUp={handlePhotoPointerEnd}
+                  onPointerCancel={handlePhotoPointerEnd}
                 >
                   {selectedCapture.kind === "video" ? (
                     <video

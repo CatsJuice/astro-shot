@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "next dev --port 3002",
     "build": "next build",
+    "build:xhs": "vite build --config vite.xhs.config.ts && node scripts/package-xhs.mjs",
     "start": "node scripts/serve-static.mjs",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern tmp",
     "dev:sites": "SITES_BUILD=true WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build:sites": "SITES_BUILD=true WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
     "start:sites": "SITES_BUILD=true WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",

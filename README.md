@@ -35,6 +35,7 @@ The development server runs at [http://localhost:3002](http://localhost:3002).
 | `npm start` | Preview the exported site locally |
 | `npm test` | Build the site and run the test suite |
 | `npm run lint` | Run ESLint |
+| `npm run build:xhs` | Build and validate the XHS offline package at `dist/astroshot-xhs.zip` |
 | `npm run build:sites` | Build the optional Sites/Cloudflare target |
 
 ## GitHub Pages

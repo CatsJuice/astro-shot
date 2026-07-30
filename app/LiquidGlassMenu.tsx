@@ -77,6 +77,7 @@ const BUTTON_PRESS_SCALE = 0.94;
 const BUTTON_OPEN_SCALE = 0.5;
 const STAGE_PADDING = 20;
 const MOBILE_MENU_INSET = 14;
+const MOBILE_TRIGGER_GAP = 10;
 const TRIGGER_IDLE_TIMEOUT = 2000;
 
 const GLASS_SPACING = 37;
@@ -302,6 +303,27 @@ function targetGeometry(
   contentHeight: number,
 ) {
   const mobile = viewportWidth <= 720;
+  const cameraTrigger = mobile
+    ? document.querySelector<HTMLElement>(
+        '[data-liquid-glass="camera-trigger"]',
+      )
+    : null;
+  const cameraTriggerRectangle = cameraTrigger?.getBoundingClientRect();
+  const mobileButtonRightInset = cameraTriggerRectangle
+    ? Math.max(
+        MOBILE_MENU_INSET,
+        viewportWidth -
+          cameraTriggerRectangle.right -
+          BUTTON_SIZE -
+          MOBILE_TRIGGER_GAP,
+      )
+    : MOBILE_MENU_INSET;
+  const mobileButtonBottomInset = cameraTriggerRectangle
+    ? Math.max(
+        MOBILE_MENU_INSET,
+        viewportHeight - cameraTriggerRectangle.bottom,
+      )
+    : MOBILE_MENU_INSET;
   const menuWidth = mobile
     ? viewportWidth - MOBILE_MENU_INSET * 2
     : Math.min(MENU_WIDTH, viewportWidth - STAGE_PADDING * 2);
@@ -316,11 +338,12 @@ function targetGeometry(
     ? MOBILE_MENU_INSET
     : viewportWidth - STAGE_PADDING - menuWidth;
   const openMenuTop = mobile
-    ? viewportHeight - MOBILE_MENU_INSET - menuHeight
+    ? viewportHeight - mobileButtonBottomInset - menuHeight
     : viewportHeight - STAGE_PADDING - menuHeight;
-  const buttonInset = mobile ? MOBILE_MENU_INSET : STAGE_PADDING;
-  const closedButtonX = viewportWidth - buttonInset - BUTTON_SIZE;
-  const closedButtonY = viewportHeight - buttonInset - BUTTON_SIZE;
+  const buttonRightInset = mobile ? mobileButtonRightInset : STAGE_PADDING;
+  const buttonBottomInset = mobile ? mobileButtonBottomInset : STAGE_PADDING;
+  const closedButtonX = viewportWidth - buttonRightInset - BUTTON_SIZE;
+  const closedButtonY = viewportHeight - buttonBottomInset - BUTTON_SIZE;
   const closedCenterX = closedButtonX + BUTTON_SIZE / 2;
   const closedCenterY = closedButtonY + BUTTON_SIZE / 2;
 

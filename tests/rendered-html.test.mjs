@@ -3,6 +3,12 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { computeGlassScissorBounds } from "../app/liquid-glass-geometry.mjs";
 import {
+  pinchRatio,
+  pointerDistance,
+} from "../app/pinch-gesture.mjs";
+import { createOpeningFireballCue } from "../app/opening-fireball.mjs";
+import { resolveInitialLocale } from "../app/locale-preference.mjs";
+import {
   firstStarAtOrBelowMagnitude,
   projectCelestial,
   setEquatorialCoordinates,
@@ -277,6 +283,46 @@ test("liquid-glass scissor bounds union, scale, flip, and clamp", () => {
       0,
     ),
     null,
+  );
+});
+
+test("pinch gestures measure distance and scale in both directions", () => {
+  assert.equal(pointerDistance({ x: 10, y: 20 }, { x: 13, y: 24 }), 5);
+  assert.equal(pinchRatio(100, 150), 1.5);
+  assert.equal(pinchRatio(100, 50), 0.5);
+  assert.equal(pinchRatio(0, 50), 1);
+});
+
+test("opening fireball stays near center and travels down-right", () => {
+  const minimum = createOpeningFireballCue(() => 0);
+  const maximum = createOpeningFireballCue(() => 0.999999);
+
+  assert.ok(minimum.delay >= 0.38);
+  assert.ok(maximum.delay <= 0.72);
+  assert.ok(minimum.angleDegrees >= 25);
+  assert.ok(maximum.angleDegrees < 39);
+  assert.ok(minimum.originX >= 0.3);
+  assert.ok(maximum.originX < 0.42);
+  assert.ok(minimum.originY >= 0.26);
+  assert.ok(maximum.originY < 0.38);
+});
+
+test("compiled locale defaults remain overridable by saved preference", () => {
+  assert.equal(resolveInitialLocale(null, "en"), "en");
+  assert.equal(resolveInitialLocale(null, "zh-CN"), "zh-CN");
+  assert.equal(resolveInitialLocale("en", "zh-CN"), "en");
+  assert.equal(resolveInitialLocale("zh-CN", "en"), "zh-CN");
+  assert.equal(resolveInitialLocale("invalid", "zh-CN"), "zh-CN");
+});
+
+test("XHS build compiles with Chinese as its default locale", async () => {
+  const config = await readFile(
+    new URL("../vite.xhs.config.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    config,
+    /"process\.env\.NEXT_PUBLIC_DEFAULT_LOCALE": JSON\.stringify\("zh-CN"\)/,
   );
 });
 
