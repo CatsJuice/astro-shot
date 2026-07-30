@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type SetStateAction,
 } from "react";
+import { CameraSystem } from "./CameraSystem";
 import { LiquidGlassMenu } from "./LiquidGlassMenu";
 import { withBasePath } from "./site-path";
 
@@ -1982,8 +1983,11 @@ function SettingsPanel({
 export function SkySimulator() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const settingsRef = useRef(DEFAULT_SETTINGS);
+  const interactionLockedRef = useRef(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [captureLocked, setCaptureLocked] = useState(false);
   const [locale, setLocale] = useState<Locale>("zh-CN");
   const [catalogCount, setCatalogCount] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
@@ -2017,6 +2021,12 @@ export function SkySimulator() {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  const updateCaptureLock = useCallback((locked: boolean) => {
+    interactionLockedRef.current = locked;
+    setCaptureLocked(locked);
+    if (locked) setPanelOpen(false);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2131,12 +2141,17 @@ export function SkySimulator() {
     window.addEventListener("sky:meteor", summonMeteor);
 
     const pointerDown = (event: PointerEvent) => {
+      if (interactionLockedRef.current) return;
       dragging = true;
       pointerX = event.clientX;
       pointerY = event.clientY;
       canvas.setPointerCapture(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
+      if (interactionLockedRef.current) {
+        dragging = false;
+        return;
+      }
       if (!dragging) return;
       const deltaX = event.clientX - pointerX;
       const deltaY = event.clientY - pointerY;
@@ -2152,10 +2167,12 @@ export function SkySimulator() {
       }
     };
     const wheel = (event: WheelEvent) => {
+      if (interactionLockedRef.current) return;
       event.preventDefault();
       view.fov = clamp(view.fov + event.deltaY * 0.00045, 30 * DEG, 86 * DEG);
     };
     const keyDown = (event: KeyboardEvent) => {
+      if (interactionLockedRef.current) return;
       const amount = event.shiftKey ? 5 * DEG : 1.5 * DEG;
       if (event.key === "ArrowLeft") view.azimuth += amount;
       if (event.key === "ArrowRight") view.azimuth -= amount;
@@ -2624,11 +2641,20 @@ export function SkySimulator() {
     <main className="sky-app">
       <canvas
         ref={canvasRef}
-        className="sky-canvas"
+        className={`sky-canvas${captureLocked ? " capture-locked" : ""}`}
         tabIndex={0}
         aria-label={copy.canvasLabel}
       />
       <div className="vignette" />
+
+      <CameraSystem
+        sourceCanvasRef={canvasRef}
+        active={cameraActive}
+        menuOpen={panelOpen}
+        onActiveChange={setCameraActive}
+        onCaptureLockChange={updateCaptureLock}
+        locale={locale}
+      />
 
       <LiquidGlassMenu
         sourceCanvasRef={canvasRef}
@@ -2636,6 +2662,8 @@ export function SkySimulator() {
         onOpenChange={setPanelOpen}
         openLabel={copy.openPanel}
         closeLabel={copy.closePanel}
+        disabled={captureLocked}
+        keepTriggerVisible={cameraActive}
       >
         <div id="sky-controls">
           <SettingsPanel

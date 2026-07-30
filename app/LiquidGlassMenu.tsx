@@ -14,6 +14,8 @@ type LiquidGlassMenuProps = {
   onOpenChange: (open: boolean) => void;
   openLabel: string;
   closeLabel: string;
+  disabled?: boolean;
+  keepTriggerVisible?: boolean;
   children: ReactNode;
 };
 
@@ -428,8 +430,13 @@ uniform sampler2D u_backdrop;
 uniform vec2 u_resolution;
 uniform vec4 u_menu_rect;
 uniform vec4 u_button_rect;
+uniform vec4 u_camera_trigger_rect;
+uniform vec4 u_camera_shutter_rect;
+uniform vec4 u_camera_modes_rect;
 uniform float u_menu_radius;
 uniform float u_menu_blend;
+uniform float u_camera_trigger_visibility;
+uniform float u_camera_controls_visibility;
 uniform vec4 u_glass_primary;
 uniform vec4 u_glass_secondary;
 uniform vec4 u_glass_tint;
@@ -528,7 +535,7 @@ float conservative_smooth_union(
   return min(left_distance, right_distance) - correction;
 }
 
-float scene_distance(vec2 position) {
+float menu_surface_distance(vec2 position) {
   float menu_distance =
     sd_smooth_round_rect(position, u_menu_rect, u_menu_radius);
   float button_distance = sd_circle(position, u_button_rect);
@@ -545,6 +552,53 @@ float scene_distance(vec2 position) {
       normal_gate *
       clamp(u_menu_blend, 0.0, 1.0)
   );
+}
+
+float scene_distance(vec2 position) {
+  float menu_distance = menu_surface_distance(position);
+  float camera_trigger_distance =
+    sd_circle(position, u_camera_trigger_rect);
+  float camera_shutter_distance =
+    sd_circle(position, u_camera_shutter_rect);
+  float camera_modes_distance = sd_smooth_round_rect(
+    position,
+    u_camera_modes_rect,
+    u_camera_modes_rect.w * 0.5
+  );
+  return min(
+    min(menu_distance, camera_trigger_distance),
+    min(camera_shutter_distance, camera_modes_distance)
+  );
+}
+
+float scene_visibility(vec2 position) {
+  float closest_distance = menu_surface_distance(position);
+  float visibility = mix(
+    u_trigger_visibility,
+    1.0,
+    clamp(u_menu_blend, 0.0, 1.0)
+  );
+  float camera_trigger_distance =
+    sd_circle(position, u_camera_trigger_rect);
+  if (camera_trigger_distance < closest_distance) {
+    closest_distance = camera_trigger_distance;
+    visibility = u_camera_trigger_visibility;
+  }
+  float camera_shutter_distance =
+    sd_circle(position, u_camera_shutter_rect);
+  if (camera_shutter_distance < closest_distance) {
+    closest_distance = camera_shutter_distance;
+    visibility = u_camera_controls_visibility;
+  }
+  float camera_modes_distance = sd_smooth_round_rect(
+    position,
+    u_camera_modes_rect,
+    u_camera_modes_rect.w * 0.5
+  );
+  if (camera_modes_distance < closest_distance) {
+    visibility = u_camera_controls_visibility;
+  }
+  return clamp(visibility, 0.0, 1.0);
 }
 
 vec2 scene_gradient(vec2 position) {
@@ -597,11 +651,7 @@ float luminance(vec3 color) {
 void main() {
   vec2 position = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
   float distance = scene_distance(position);
-  float surface_visibility = mix(
-    u_trigger_visibility,
-    1.0,
-    clamp(u_menu_blend, 0.0, 1.0)
-  );
+  float surface_visibility = scene_visibility(position);
   if (surface_visibility <= 0.001) {
     discard;
   }
@@ -609,6 +659,7 @@ void main() {
   vec2 shadow_position =
     position - vec2(0.0, u_glass_secondary.z);
   float shadow_distance = max(scene_distance(shadow_position), 0.0);
+  float shadow_visibility = scene_visibility(shadow_position);
   float shadow = exp(
     -(shadow_distance * shadow_distance) /
       (2.0 * u_glass_secondary.w * u_glass_secondary.w)
@@ -623,7 +674,7 @@ void main() {
       0.0,
       0.0,
       0.0,
-      shadow * u_glass_shadow_opacity * surface_visibility
+      shadow * u_glass_shadow_opacity * shadow_visibility
     );
     return;
   }
@@ -762,6 +813,8 @@ export function LiquidGlassMenu({
   onOpenChange,
   openLabel,
   closeLabel,
+  disabled = false,
+  keepTriggerVisible = false,
   children,
 }: LiquidGlassMenuProps) {
   const glassCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -769,6 +822,8 @@ export function LiquidGlassMenu({
   const menuContentRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const openRef = useRef(open);
+  const disabledRef = useRef(disabled);
+  const keepTriggerVisibleRef = useRef(keepTriggerVisible);
   const buttonHoveredRef = useRef(false);
   const buttonPressedRef = useRef(false);
   const retargetButtonScaleRef = useRef<(() => void) | null>(null);
@@ -777,6 +832,15 @@ export function LiquidGlassMenu({
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+    if (disabled && open) onOpenChange(false);
+  }, [disabled, onOpenChange, open]);
+
+  useEffect(() => {
+    keepTriggerVisibleRef.current = keepTriggerVisible;
+  }, [keepTriggerVisible]);
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
@@ -806,6 +870,18 @@ export function LiquidGlassMenu({
     const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
     const menuRectLocation = gl.getUniformLocation(program, "u_menu_rect");
     const buttonRectLocation = gl.getUniformLocation(program, "u_button_rect");
+    const cameraTriggerRectLocation = gl.getUniformLocation(
+      program,
+      "u_camera_trigger_rect",
+    );
+    const cameraShutterRectLocation = gl.getUniformLocation(
+      program,
+      "u_camera_shutter_rect",
+    );
+    const cameraModesRectLocation = gl.getUniformLocation(
+      program,
+      "u_camera_modes_rect",
+    );
     const menuRadiusLocation = gl.getUniformLocation(
       program,
       "u_menu_radius",
@@ -824,6 +900,14 @@ export function LiquidGlassMenu({
     const triggerVisibilityLocation = gl.getUniformLocation(
       program,
       "u_trigger_visibility",
+    );
+    const cameraTriggerVisibilityLocation = gl.getUniformLocation(
+      program,
+      "u_camera_trigger_visibility",
+    );
+    const cameraControlsVisibilityLocation = gl.getUniformLocation(
+      program,
+      "u_camera_controls_visibility",
     );
     const backdropLocation = gl.getUniformLocation(program, "u_backdrop");
 
@@ -857,6 +941,10 @@ export function LiquidGlassMenu({
     let lastPointerActivity = performance.now();
     let triggerVisibilityTarget = 1;
     let measuredContentHeight = MENU_MAX_HEIGHT;
+    let cameraTriggerElement: HTMLElement | null = null;
+    let cameraShutterElement: HTMLElement | null = null;
+    let cameraModesElement: HTMLElement | null = null;
+    let cameraControlsElement: HTMLElement | null = null;
     let openDimensions = targetGeometry(
       lastOpen,
       viewportWidth,
@@ -868,6 +956,39 @@ export function LiquidGlassMenu({
       1,
       TRIGGER_VISIBILITY_TRANSITION,
     );
+
+    const resolveCameraGlassElements = () => {
+      cameraTriggerElement ??= document.querySelector<HTMLElement>(
+        '[data-liquid-glass="camera-trigger"]',
+      );
+      cameraShutterElement ??= document.querySelector<HTMLElement>(
+        '[data-liquid-glass="camera-shutter"]',
+      );
+      cameraModesElement ??= document.querySelector<HTMLElement>(
+        '[data-liquid-glass="camera-modes"]',
+      );
+      cameraControlsElement ??=
+        document.querySelector<HTMLElement>(".camera-controls");
+    };
+
+    const setElementRectUniform = (
+      location: WebGLUniformLocation | null,
+      element: HTMLElement | null,
+      deviceScale: number,
+    ) => {
+      if (!element) {
+        gl.uniform4f(location, -10_000, -10_000, 1, 1);
+        return;
+      }
+      const rectangle = element.getBoundingClientRect();
+      gl.uniform4f(
+        location,
+        rectangle.left * deviceScale,
+        rectangle.top * deviceScale,
+        rectangle.width * deviceScale,
+        rectangle.height * deviceScale,
+      );
+    };
 
     const markPointerActivity = () => {
       lastPointerActivity = performance.now();
@@ -1069,8 +1190,15 @@ export function LiquidGlassMenu({
       }
       const shouldHideTrigger =
         !lastOpen &&
+        !keepTriggerVisibleRef.current &&
         time - lastPointerActivity >= TRIGGER_IDLE_TIMEOUT;
-      const nextTriggerVisibilityTarget = shouldHideTrigger ? 0 : 1;
+      const nextTriggerVisibilityTarget = disabledRef.current
+        ? shouldHideTrigger
+          ? 0
+          : 0.34
+        : shouldHideTrigger
+          ? 0
+          : 1;
       if (nextTriggerVisibilityTarget !== triggerVisibilityTarget) {
         triggerVisibilityTarget = nextTriggerVisibilityTarget;
         setChannelTarget(
@@ -1119,7 +1247,11 @@ export function LiquidGlassMenu({
         button.style.transform =
           `scale(${channels.buttonScale.current})`;
         button.style.pointerEvents =
-          lastOpen || triggerVisibility.current <= 0.05 ? "none" : "auto";
+          lastOpen ||
+          disabledRef.current ||
+          triggerVisibility.current <= 0.05
+            ? "none"
+            : "auto";
       }
 
       const sourceCanvas = sourceCanvasRef.current;
@@ -1190,6 +1322,22 @@ export function LiquidGlassMenu({
           BUTTON_SIZE * channels.buttonScale.current * deviceScale,
           BUTTON_SIZE * channels.buttonScale.current * deviceScale,
         );
+        resolveCameraGlassElements();
+        setElementRectUniform(
+          cameraTriggerRectLocation,
+          cameraTriggerElement,
+          deviceScale,
+        );
+        setElementRectUniform(
+          cameraShutterRectLocation,
+          cameraShutterElement,
+          deviceScale,
+        );
+        setElementRectUniform(
+          cameraModesRectLocation,
+          cameraModesElement,
+          deviceScale,
+        );
         gl.uniform1f(
           menuRadiusLocation,
           channels.menuRadius.current * deviceScale,
@@ -1224,6 +1372,22 @@ export function LiquidGlassMenu({
           triggerVisibilityLocation,
           triggerVisibility.current,
         );
+        gl.uniform1f(
+          cameraTriggerVisibilityLocation,
+          cameraTriggerElement
+            ? Number.parseFloat(
+                window.getComputedStyle(cameraTriggerElement).opacity,
+              ) || 0
+            : 0,
+        );
+        gl.uniform1f(
+          cameraControlsVisibilityLocation,
+          cameraControlsElement
+            ? Number.parseFloat(
+                window.getComputedStyle(cameraControlsElement).opacity,
+              ) || 0
+            : 0,
+        );
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
 
@@ -1231,6 +1395,7 @@ export function LiquidGlassMenu({
     };
 
     setLiquidReady(true);
+    document.documentElement.dataset.liquidGlassReady = "true";
     frame = window.requestAnimationFrame(render);
     return () => {
       window.cancelAnimationFrame(frame);
@@ -1241,6 +1406,7 @@ export function LiquidGlassMenu({
       window.removeEventListener("click", markPointerActivity);
       reducedMotionQuery.removeEventListener("change", reducedMotionChanged);
       retargetButtonScaleRef.current = null;
+      delete document.documentElement.dataset.liquidGlassReady;
       gl.deleteTexture(texture);
       gl.deleteVertexArray(vertexArray);
       gl.deleteProgram(program);
@@ -1273,7 +1439,10 @@ export function LiquidGlassMenu({
           aria-label={open ? closeLabel : openLabel}
           aria-expanded={open}
           aria-controls="sky-controls"
-          onClick={() => onOpenChange(true)}
+          disabled={disabled}
+          onClick={() => {
+            if (!disabled) onOpenChange(true);
+          }}
           onPointerEnter={() => {
             buttonHoveredRef.current = true;
             retargetButtonScaleRef.current?.();

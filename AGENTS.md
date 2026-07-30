@@ -19,3 +19,10 @@
   implementation diaries or lists of tuning values.
 - Put implementation details in code or focused technical documentation only
   when they are genuinely useful to maintainers.
+
+## Temporary Files
+
+- Store all project-specific temporary files under the repository's `tmp/`
+  directory.
+- Do not place generated previews, scratch scripts, or other disposable artifacts
+  in production source or public asset directories.

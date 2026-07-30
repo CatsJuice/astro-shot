@@ -32,6 +32,8 @@ test("static export renders the AstroShot shell and controls", async () => {
   assert.match(html, /触发强火流星/);
   assert.match(html, /模拟高感光度传感器颗粒/);
   assert.match(html, /aria-label="打开参数面板"/);
+  assert.match(html, /aria-label="进入相机模式"/);
+  assert.match(html, />长曝光</);
   assert.match(html, /aria-expanded="false"/);
   assert.match(html, /aria-label="切换为英文"/);
   assert.doesNotMatch(html, />LIVE</);
@@ -42,20 +44,28 @@ test("static export renders the AstroShot shell and controls", async () => {
 });
 
 test("ships a real catalog and the temporal rendering systems", async () => {
-  const [source, glassSource, css, readme, catalogText, milkyWayPanorama] =
-    await Promise.all([
-      readFile(new URL("../app/SkySimulator.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../app/LiquidGlassMenu.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-      readFile(new URL("../README.md", import.meta.url), "utf8"),
-      readFile(new URL("../public/data/stars.json", import.meta.url), "utf8"),
-      readFile(
-        new URL(
-          "../public/textures/eso-milky-way-panorama-4096.jpg",
-          import.meta.url,
-        ),
+  const [
+    source,
+    glassSource,
+    cameraSource,
+    css,
+    readme,
+    catalogText,
+    milkyWayPanorama,
+  ] = await Promise.all([
+    readFile(new URL("../app/SkySimulator.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/LiquidGlassMenu.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/CameraSystem.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../README.md", import.meta.url), "utf8"),
+    readFile(new URL("../public/data/stars.json", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../public/textures/eso-milky-way-panorama-4096.jpg",
+        import.meta.url,
       ),
-    ]);
+    ),
+  ]);
   const catalog = JSON.parse(catalogText);
 
   assert.equal(catalog.count, catalog.stars.length);
@@ -177,7 +187,33 @@ test("ships a real catalog and the temporal rendering systems", async () => {
     /syncChannelToLayout\(channels\.menuCenterY, geometry\.menuCenterY\)/,
   );
   assert.match(glassSource, /float sd_circle/);
+  assert.match(cameraSource, /window\.indexedDB\.open/);
+  assert.match(cameraSource, /source\.captureStream\(30\)/);
+  assert.match(cameraSource, /new MediaRecorder/);
+  assert.match(cameraSource, /globalCompositeOperation =[\s\S]*?"lighten"/);
+  assert.match(cameraSource, /startViewTransition/);
+  assert.match(cameraSource, /captures\.slice\(0, 3\)/);
+  assert.match(cameraSource, /<video[\s\S]*?controls/);
+  assert.match(cameraSource, /onWheel=\{handleZoom\}/);
+  assert.match(cameraSource, /deleteStoredCapture/);
+  assert.match(cameraSource, /downloadSelectedCapture/);
+  assert.match(cameraSource, /gallery-info-sheet t-panel-slide/);
+  assert.match(cameraSource, /gallery-more-menu t-dropdown/);
+  assert.match(cameraSource, /CaptureKindIcon/);
+  assert.match(cameraSource, /const hideIdleUi = !active && uiIdle/);
+  assert.match(cameraSource, /menuOpen \? " menu-open-hidden" : ""/);
+  assert.match(
+    source,
+    /keepTriggerVisible=\{cameraActive\}/,
+  );
   assert.match(css, /\.sky-canvas\s*\{/);
+  assert.match(css, /\.camera-mode-trigger/);
+  assert.match(css, /\.long-exposure-preview/);
+  assert.match(css, /\.gallery-grid/);
+  assert.match(css, /\.gallery-kind-badge/);
+  assert.match(css, /\.gallery-info-sheet/);
+  assert.match(css, /\.gallery-more-menu/);
+  assert.doesNotMatch(cameraSource, /gallery-grid-meta/);
   assert.match(css, /\.noise-toggle\.active/);
   assert.match(css, /\.range\.hue-range::/);
   assert.match(css, /\.range\.saturation-range::/);
