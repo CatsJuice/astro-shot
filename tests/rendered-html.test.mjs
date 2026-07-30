@@ -212,8 +212,11 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(css, /--glass-foreground: #f5f7ff/);
   assert.doesNotMatch(css, /\.sky-canvas\.menu-open/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(readme, /^# AstroShot$/m);
   assert.match(readme, /AndrewPrifer\/liquid-dom/);
-  assert.match(readme, /HTML-in-Canvas/);
-  assert.match(readme, /499 \/ 22/);
-  assert.match(readme, /400 × 680/);
+  assert.doesNotMatch(readme, /[\u3400-\u9fff]/);
+  assert.doesNotMatch(
+    readme,
+    /spacing=37|bezelWidth=70|499 \/ 22|400 × 680|contentIor|contentDepth/,
+  );
 });
