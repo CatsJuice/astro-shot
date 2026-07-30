@@ -17,6 +17,30 @@ npm run dev
 npm test
 ```
 
+## GitHub Pages 部署
+
+GitHub Pages 是项目的默认生产部署方式。默认的 `npm run build` 会执行
+Next.js 静态导出并生成 `out/`；推送到 `main` 后，
+`.github/workflows/deploy-pages.yml` 会自动构建、测试并发布该目录。
+
+仓库首次启用时，需要在 GitHub 的 **Settings → Pages → Build and
+deployment → Source** 中选择 **GitHub Actions**。之后每次推送到 `main`
+都会更新站点，也可以在 Actions 页面手动运行部署工作流。
+
+工作流会从 GitHub Pages 自动取得站点 URL 和仓库子路径，所以项目页、
+用户/组织主页以及自定义域名都不需要手工修改配置。若要在本地模拟
+`https://catsjuice.github.io/astro-shot/` 的子路径构建，可运行：
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/astro-shot \
+NEXT_PUBLIC_SITE_URL=https://catsjuice.github.io/astro-shot \
+npm test
+```
+
+构建完成后可用 `npm start` 在 `http://localhost:3002/` 预览 `out/`。
+原有 Sites/Cloudflare 构建仍作为可选兼容路径保留，可使用
+`npm run build:sites`。
+
 ## 数据来源
 
 - 恒星数据：HYG Database v4.1，整合 Hipparcos、Yale Bright Star 与 Gliese 星表，数据采用 CC BY-SA 4.0。

@@ -1,35 +1,24 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+  return readFile(new URL("../out/index.html", import.meta.url), "utf8");
 }
 
-test("server-renders the AstroShot shell and controls", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+test("static export renders the AstroShot shell and controls", async () => {
+  const html = await render();
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002"
+  ).replace(/\/$/, "");
 
-  const html = await response.text();
   assert.match(html, /<title>AstroShot · 真实星空与流星模拟器<\/title>/i);
+  assert.match(html, new RegExp(`(?:href|src)="${basePath}/_next/static/`));
+  assert.ok(html.includes(`content="${siteUrl}/og.png"`));
+  if (basePath) {
+    assert.ok(!html.includes(`${basePath}${basePath}/og.png`));
+  }
   assert.match(html, /aria-label="可拖拽旋转视角的真实星空模拟画布"/);
   assert.match(html, /HYG v4\.1 · HIPPARCOS \/ YALE \/ GLIESE/);
   assert.match(html, /aria-label="大气闪烁"/);
@@ -48,6 +37,8 @@ test("server-renders the AstroShot shell and controls", async () => {
   assert.doesNotMatch(html, />LIVE</);
   assert.doesNotMatch(html, /夜航|NIGHTFALL|拖拽观察天穹| FPS/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
+
+  await access(new URL("../out/.nojekyll", import.meta.url));
 });
 
 test("ships a real catalog and the temporal rendering systems", async () => {
@@ -72,6 +63,11 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.ok(milkyWayPanorama.byteLength > 1_000_000);
   assert.match(source, /function temporalNoise\(/);
   assert.match(source, /function createGalacticPanoramaRenderer\(/);
+  assert.match(
+    source,
+    /withBasePath\(\s*"\/textures\/eso-milky-way-panorama-4096\.jpg"/,
+  );
+  assert.match(source, /fetch\(withBasePath\("\/data\/stars\.json"\)\)/);
   assert.match(source, /u_camera_to_local/);
   assert.match(source, /float band_mask =/);
   assert.match(source, /eso-milky-way-panorama-4096\.jpg/);

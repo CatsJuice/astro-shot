@@ -10,6 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 import { LiquidGlassMenu } from "./LiquidGlassMenu";
+import { withBasePath } from "./site-path";
 
 type CatalogRow = [
   rightAscension: number,
@@ -428,7 +429,9 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
     gl.generateMipmap(gl.TEXTURE_2D);
     textureReady = true;
   };
-  panoramaImage.src = "/textures/eso-milky-way-panorama-4096.jpg";
+  panoramaImage.src = withBasePath(
+    "/textures/eso-milky-way-panorama-4096.jpg",
+  );
 
   const positionLocation = gl.getAttribLocation(program, "a_position");
   const panoramaLocation = gl.getUniformLocation(program, "u_panorama");
@@ -2064,7 +2067,7 @@ export function SkySimulator() {
     resizeObserver.observe(canvas);
     resize();
 
-    fetch("/data/stars.json")
+    fetch(withBasePath("/data/stars.json"))
       .then((response) => {
         if (!response.ok) throw new Error("Unable to load star catalogue");
         return response.json() as Promise<Catalog>;
