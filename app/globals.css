@@ -58,6 +58,11 @@
     --safe-area-inset-left,
     env(safe-area-inset-left, 0px)
   );
+  --gallery-host-header-height: 0px;
+}
+
+html[data-xhs-build="true"] {
+  --gallery-host-header-height: 56px;
 }
 
 @theme inline {
@@ -68,6 +73,8 @@
 
 * {
   box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 html,
@@ -128,6 +135,11 @@ button {
   cursor: default;
 }
 
+.sky-canvas.ui-idle,
+.sky-canvas.ui-idle:active {
+  cursor: none;
+}
+
 .vignette {
   position: absolute;
   inset: 0;
@@ -161,7 +173,7 @@ button {
 .glass-dismiss-layer {
   position: fixed;
   inset: 0;
-  z-index: 39;
+  z-index: 9;
   pointer-events: none;
 }
 
@@ -172,7 +184,7 @@ button {
 .liquid-menu-stage {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 10;
   pointer-events: none;
 }
 
@@ -1313,7 +1325,10 @@ html[data-liquid-glass-ready="true"] .camera-modes::before {
   display: grid;
   min-height: 72px;
   padding:
-    max(14px, var(--app-safe-area-inset-top))
+    calc(
+      var(--gallery-host-header-height) +
+        max(14px, var(--app-safe-area-inset-top))
+    )
     max(20px, var(--app-safe-area-inset-right))
     12px
     max(24px, var(--app-safe-area-inset-left));
@@ -1846,7 +1861,10 @@ video.gallery-detail-media {
   .gallery-header {
     min-height: 64px;
     padding:
-      max(10px, var(--app-safe-area-inset-top))
+      calc(
+        var(--gallery-host-header-height) +
+          max(10px, var(--app-safe-area-inset-top))
+      )
       max(14px, var(--app-safe-area-inset-right))
       10px
       max(16px, var(--app-safe-area-inset-left));

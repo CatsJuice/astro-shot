@@ -38,6 +38,7 @@ type CameraSystemProps = {
   menuOpen: boolean;
   onActiveChange: (active: boolean) => void;
   onCaptureLockChange: (locked: boolean) => void;
+  onUiIdleChange: (idle: boolean) => void;
   locale: "zh-CN" | "en";
 };
 
@@ -322,6 +323,7 @@ export function CameraSystem({
   menuOpen,
   onActiveChange,
   onCaptureLockChange,
+  onUiIdleChange,
   locale,
 }: CameraSystemProps) {
   const copy = COPY[locale];
@@ -450,6 +452,17 @@ export function CameraSystem({
       window.removeEventListener("click", markActivity);
     };
   }, [active]);
+
+  useEffect(() => {
+    onUiIdleChange(hideIdleUi);
+  }, [hideIdleUi, onUiIdleChange]);
+
+  useEffect(
+    () => () => {
+      onUiIdleChange(false);
+    },
+    [onUiIdleChange],
+  );
 
   useEffect(() => {
     if (!isCapturing) return;

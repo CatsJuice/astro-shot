@@ -262,6 +262,10 @@ function currentSiderealAngle(longitudeDegrees = 103.82) {
   return ((degrees % 360) + 360) % 360 * DEG;
 }
 
+function isPowerOfTwo(value: number) {
+  return value > 0 && (value & (value - 1)) === 0;
+}
+
 function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
   const canvas = document.createElement("canvas");
   const gl = canvas.getContext("webgl", {
@@ -431,9 +435,9 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
     gl.UNSIGNED_BYTE,
     new Uint8Array([0, 0, 0, 0]),
   );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
   let textureReady = false;
@@ -450,7 +454,20 @@ function createGalacticPanoramaRenderer(): GalacticPanoramaRenderer | null {
       gl.UNSIGNED_BYTE,
       panoramaImage,
     );
-    gl.generateMipmap(gl.TEXTURE_2D);
+    const supportsMipmaps =
+      isPowerOfTwo(panoramaImage.naturalWidth) &&
+      isPowerOfTwo(panoramaImage.naturalHeight);
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_WRAP_S,
+      supportsMipmaps ? gl.REPEAT : gl.CLAMP_TO_EDGE,
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MIN_FILTER,
+      supportsMipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR,
+    );
+    if (supportsMipmaps) gl.generateMipmap(gl.TEXTURE_2D);
     textureReady = true;
   };
   panoramaImage.src = withBasePath(
@@ -2033,6 +2050,7 @@ export function SkySimulator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [captureLocked, setCaptureLocked] = useState(false);
+  const [uiIdle, setUiIdle] = useState(false);
   const [locale, setLocale] = useState<Locale>(defaultLocale);
   const [catalogCount, setCatalogCount] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
@@ -2818,7 +2836,9 @@ export function SkySimulator() {
     <main className="sky-app">
       <canvas
         ref={canvasRef}
-        className={`sky-canvas${captureLocked ? " capture-locked" : ""}`}
+        className={`sky-canvas${captureLocked ? " capture-locked" : ""}${
+          uiIdle ? " ui-idle" : ""
+        }`}
         tabIndex={0}
         aria-label={copy.canvasLabel}
       />
@@ -2830,6 +2850,7 @@ export function SkySimulator() {
         menuOpen={panelOpen}
         onActiveChange={setCameraActive}
         onCaptureLockChange={updateCaptureLock}
+        onUiIdleChange={setUiIdle}
         locale={locale}
       />
 

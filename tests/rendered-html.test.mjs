@@ -508,12 +508,14 @@ test("ships a real catalog and the temporal rendering systems", async () => {
   assert.match(cameraSource, /gallery-more-menu t-dropdown/);
   assert.match(cameraSource, /CaptureKindIcon/);
   assert.match(cameraSource, /const hideIdleUi = !active && uiIdle/);
+  assert.match(cameraSource, /onUiIdleChange\(hideIdleUi\)/);
   assert.match(cameraSource, /menuOpen \? " menu-open-hidden" : ""/);
   assert.match(
     source,
     /keepTriggerVisible=\{cameraActive\}/,
   );
   assert.match(css, /\.sky-canvas\s*\{/);
+  assert.match(css, /\.sky-canvas\.ui-idle[\s\S]*?cursor: none/);
   assert.match(css, /\.camera-mode-trigger/);
   assert.match(css, /\.long-exposure-preview/);
   assert.match(css, /\.gallery-grid/);
